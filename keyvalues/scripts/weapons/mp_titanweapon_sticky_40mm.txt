@@ -41,6 +41,8 @@ WeaponData
 		}
 		pas_tone_burst
 		{
+			"charge_time" 									"++0.1"
+			"charge_levels"									"3"
 		}
 		fd_splasher_rounds
 		{

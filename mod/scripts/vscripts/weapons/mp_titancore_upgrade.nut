@@ -298,7 +298,18 @@ var function OnWeaponPrimaryAttack_UpgradeCore( entity weapon, WeaponPrimaryAtta
 	#endif
 	OnAbilityCharge_TitanCore( weapon )
 	OnAbilityStart_TitanCore( weapon )
-
+	
+	// titan_balanced
+	#if SERVER
+		#if TITAN_REBALANCE_LOADOUT
+			entity ordnance = owner.GetOffhandWeapon( OFFHAND_RIGHT )
+			if ( ordnance.HasMod( "upgradeCore_Vanguard") )
+				ordnance.AddMod( "upgradeCore_Vanguard_balanced" )
+			else if ( ordnance.HasMod( "upgradeCore_MissileRack_Vanguard") )
+				ordnance.AddMod( "upgradeCore_MissileRack_Vanguard_balanced" )
+		#endif
+	#endif
+	
 	return 1
 }
 
@@ -379,4 +390,3 @@ void function ServerCallback_VanguardUpgradeMessage( int upgradeID )
 			break
 	}
 }
-#endif

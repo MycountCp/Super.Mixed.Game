@@ -56,5 +56,9 @@ WeaponData
 			"damage_near_value_titanarmor"				"*0.8"
 			"damage_far_value_titanarmor" 				"*0.8"
 		}
+		pas_legion_spinup_balanced
+		{
+			"ads_move_speed_scale"							"++0.35"
+		}
 	}
 }

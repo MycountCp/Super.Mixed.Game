@@ -23,7 +23,7 @@ WeaponData
 		fd_balance
 		{
 		}
-
+		
 		// modded titan
 		atlas_rockets // use together with upgradeCore_Vanguard
 		{
@@ -31,6 +31,37 @@ WeaponData
 			"damage_far_value"						"--50"
 			"damage_near_value_titanarmor"			"--50"
 			"damage_far_value_titanarmor" 			"--50"
+		}
+		upgradeCore_Vanguard_balanced
+		{
+			"explosion_inner_radius"                        "60"
+
+			"deploy_time" 									"0.2"
+
+            "charge_cooldown_time"							"6.0"
+	        "charge_cooldown_delay"   						"1.0"
+
+			"smart_ammo_targeting_time_min"					"0.2"
+	        "smart_ammo_targeting_time_max"					"0.2"
+			"smart_ammo_unlock_debounce_time"				"++0.60"
+			"smart_ammo_new_target_delay"					"--0.05"
+		}
+		upgradeCore_MissileRack_Vanguard_balanced
+		{
+			"explosion_inner_radius"                        "60"
+
+			"deploy_time" 									"0.2"
+
+            "charge_cooldown_time"							"10.6"
+            "charge_cooldown_delay"   						"1.0"
+
+            "smart_ammo_max_targeted_burst"					"12"
+			"smart_ammo_target_max_locks_heavy"				"12"
+			"smart_ammo_unlock_debounce_time"				"++0.60"
+			"smart_ammo_new_target_delay"					"--0.05"
+            "smart_ammo_targeting_time_min"					"0.2"
+	        "smart_ammo_targeting_time_max"					"0.2"
+			"smart_ammo_search_angle" 						"30"
 		}
 	}
 }

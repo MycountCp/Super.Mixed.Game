@@ -41,8 +41,6 @@ WeaponData
 		}
 		pas_tone_burst
 		{
-			"charge_time" 									"++0.1"
-			"charge_levels"									"3"
 		}
 		fd_splasher_rounds
 		{
@@ -98,6 +96,11 @@ WeaponData
 			"damage_far_value"							"*0.35"
 			"damage_near_value_titanarmor"				"*0.35"
 			"damage_far_value_titanarmor" 				"*0.35"
+		}
+		pas_tone_burst_balanced
+		{
+			"charge_time" 									"++0.1"
+			"charge_levels"									"3"
 		}
 	}
 }

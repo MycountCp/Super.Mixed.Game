@@ -24,7 +24,7 @@ WeaponData
 
 		pas_ion_weapon_ads
 		{
-
+		
 		}
 		fd_split_shot_cost
 		{
@@ -45,6 +45,10 @@ WeaponData
 		pas_ion_weapon
 		{
 			
+		}
+		pas_ion_weapon_ads_balanced
+		{
+			"shared_energy_cost"							"*--0.45" //Amped Shots
 		}
 	}
 }

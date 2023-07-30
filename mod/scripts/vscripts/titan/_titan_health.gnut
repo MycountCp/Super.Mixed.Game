@@ -1204,6 +1204,14 @@ void function AddCreditToTitanCoreBuilder( entity titan, float credit )
 	if ( SoulHasPassive( soul, ePassives.PAS_VANGUARD_COREMETER ) )
 		credit *= 1.10
 
+	#if TITAN_REBALANCE_LOADOUT
+	if ( SoulHasPassive( soul, ePassives.PAS_VANGUARD_DOOM ) )
+		credit *= 1.10
+
+	if ( SoulHasPassive( soul, ePassives.PAS_VANGUARD_REARM ) )
+		credit *= 1.10
+	#endif
+
 	credit *= file.earn_meter_titan_multiplier
 	#if MP
 	if ( titan.IsPlayer() )

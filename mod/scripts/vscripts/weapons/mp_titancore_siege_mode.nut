@@ -113,7 +113,11 @@ void function SmartCoreThink( entity weapon, float coreDuration )
 		AddAmmoStatusEffect( owner )
 	}
 
-	int statusEffect = StatusEffect_AddEndless( soul, eStatusEffect.titan_damage_amp, 0.20 )
+	#if TITAN_REBALANCE_LOADOUT
+	int statusEffect = StatusEffect_AddEndless( soul, eStatusEffect.titan_damage_amp, 0.80 )  //智慧核心的增伤
+	#else //原版表现
+	int statusEffect = StatusEffect_AddEndless( soul, eStatusEffect.titan_damage_amp, 0.20 )  //智慧核心的增伤
+	#endif
 
 	OnThreadEnd(
 	function() : ( weapon, soul, owner, statusEffect, statusEffectSmartCore )

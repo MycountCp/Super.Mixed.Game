@@ -311,11 +311,7 @@ void function BasicBlock_OnDamage( entity blockingEnt, var damageInfo )
 	entity weapon = blockingEnt.GetOffhandWeapon( OFFHAND_LEFT )
 	if ( blockingEnt.IsPlayer() && weapon.HasMod( "fd_sword_block" ) )
 	{
-		#if TITAN_REBALANCE_LOADOUT
-		float meterReward = DamageInfo_GetDamage( damageInfo ) * (0.55 - damageScale) * CORE_BUILD_PERCENT_FROM_TITAN_DAMAGE_INFLICTED * 0.015 * file.earn_meter_titan_multiplier //剑封时受到伤害所获取的核心值
-		#else //原版表现
-		float meterReward = DamageInfo_GetDamage( damageInfo ) * (1 - damageScale) * CORE_BUILD_PERCENT_FROM_TITAN_DAMAGE_INFLICTED * 0.015 * file.earn_meter_titan_multiplier //剑封时受到伤害所获取的核心值
-		#endif
+		float meterReward = DamageInfo_GetDamage( damageInfo ) * (1.0 - damageScale) * CORE_BUILD_PERCENT_FROM_TITAN_DAMAGE_INFLICTED * 0.015 * file.earn_meter_titan_multiplier
 		PlayerEarnMeter_AddEarnedAndOwned( blockingEnt, 0.0, meterReward )
 	}
 

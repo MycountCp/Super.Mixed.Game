@@ -10,9 +10,5 @@ WeaponData
 		rapid_rearm
 		{
 		}
-		pas_vanguard_rearm_balanced
-		{
-			"regen_ammo_refill_rate"						"++5.34"
-		}
 	}
 }

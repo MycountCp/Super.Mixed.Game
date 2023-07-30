@@ -26,19 +26,11 @@ WeaponData
 		}
 		pas_ronin_weapon
 		{
-		
 		}
 		mixed_balance
 		{
 			"damage_near_value"   						"*0.35"
 			"damage_far_value"							"*0.35"
-		}
-		pas_ronin_weapon_balanced
-		{
-			"projectile_ricochet_max_count"					"++99" // Arbitrarily large
-			"projectile_damage_reduction_per_bounce"		"-20"
-			"projectile_damages_owner"						"0"
-			"projectile_speed_reduction_factor"				"0.0"
 		}
 	}
 }

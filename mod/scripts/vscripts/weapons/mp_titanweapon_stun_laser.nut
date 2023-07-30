@@ -52,7 +52,7 @@ var function OnWeaponPrimaryAttack_titanweapon_stun_laser( entity weapon, Weapon
 	if( weapon.HasMod( "charge_ball" ) )
 		return OnWeaponPrimaryAttack_weapon_MpTitanWeaponChargeBall( weapon, attackParams )
 	//
-
+	
 	// vanilla behavior
 	#if CLIENT
 		if ( !weapon.ShouldPredictProjectiles() )
@@ -98,7 +98,7 @@ void function StunLaser_DamagedTarget( entity target, var damageInfo )
 	//print( "current monarch weapon is: " + string( weapon ) )
 	if( !IsValid( weapon ) )
 		return
-
+	
 	// modded weapon
 	// archon's laser, only do damage
 	if ( weapon.HasMod( "archon_laser" ) )
@@ -130,16 +130,10 @@ void function StunLaser_DamagedTarget( entity target, var damageInfo )
 			entity soul = target.GetTitanSoul()
 			if ( IsValid( soul ) )
 			{
-				// modified content
 				int shieldRestoreAmount = 750
-				if ( IsValid( attackerSoul ) && SoulHasPassive( attackerSoul, ePassives.PAS_VANGUARD_SHIELD ) )
-				#if TITAN_REBALANCE_LOADOUT
-    				shieldRestoreAmount = int( 2.0 * shieldRestoreAmount )
-				#else //原版表现
+				//if ( SoulHasPassive( soul, ePassives.PAS_VANGUARD_SHIELD ) ) // respawn messed this up
+				if ( SoulHasPassive( soul, ePassives.PAS_VANGUARD_SHIELD ) || weapon.HasMod( "pas_vanguard_shield" ) ) 
 					shieldRestoreAmount = int( 1.25 * shieldRestoreAmount )
-				#endif
-				// 若对象为队友则
-				// 护盾放大器回盾为2倍，对能量转换生效
 
 				float shieldAmount = min( soul.GetShieldHealth() + shieldRestoreAmount, soul.GetShieldHealthMax() )
 				shieldRestoreAmount = soul.GetShieldHealthMax() - int( shieldAmount )
@@ -171,7 +165,7 @@ void function StunLaser_DamagedTarget( entity target, var damageInfo )
 		}
 	}
 	// non energy transfer condition
-	else if ( target.IsNPC() || target.IsPlayer() )
+	else if ( target.IsNPC() || target.IsPlayer() ) 
 	{
 		if ( sameTeam && !friendlyFireOn ) // normal condition: no friendlyFire, hits teammate
 		{
@@ -185,11 +179,7 @@ void function StunLaser_DamagedTarget( entity target, var damageInfo )
 		{
 			//if ( SoulHasPassive( soul, ePassives.PAS_VANGUARD_SHIELD ) ) // respawn messed this up
 			if ( SoulHasPassive( soul, ePassives.PAS_VANGUARD_SHIELD ) || weapon.HasMod( "pas_vanguard_shield" ) )
-			#if TITAN_REBALANCE_LOADOUT
-				shieldRestoreAmount = int( 2.0 * shieldRestoreAmount )
-			#else //原版表现
 				shieldRestoreAmount = int( 1.25 * shieldRestoreAmount )
-			#endif
 			soul.SetShieldHealth( min( soul.GetShieldHealth() + shieldRestoreAmount, soul.GetShieldHealthMax() ) )
 		}
 		if ( attacker.IsPlayer() )

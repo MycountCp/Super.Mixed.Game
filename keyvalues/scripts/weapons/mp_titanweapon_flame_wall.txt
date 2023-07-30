@@ -1,4 +1,4 @@
-WeaponData
+CE_FLAG_TITAN_3P_CAMWeaponData
 {			
 	Mods
 	{
@@ -51,6 +51,10 @@ WeaponData
 		{
 			"damage_near_value"   						"*0.2"
 			"damage_far_value"							"*0.2"
+		}
+		pas_scorch_firewall_balanced
+		{
+			"regen_ammo_refill_rate"						"++42"
 		}
 	}
 }

@@ -99,8 +99,7 @@ WeaponData
 		}
 		pas_tone_burst_balanced
 		{
-			"charge_time" 									"++0.1"
-			"charge_levels"									"3"
+			"charge_time" 									"--1.9"
 		}
 	}
 }

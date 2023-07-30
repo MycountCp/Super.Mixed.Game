@@ -23,7 +23,6 @@ WeaponData
 		}
 		pas_ion_tripwire
 		{
-			"shared_energy_cost"							"0"
 		}
 
 		// fakebt
@@ -54,6 +53,10 @@ WeaponData
 		{
 			"regen_ammo_refill_rate"						"*0.8" // 12.5s cooldown
 			"regen_ammo_refill_start_delay"					"++1"
+		}
+		pas_ion_tripwire_balanced
+		{
+			"regen_ammo_refill_rate"						"++13.33"
 		}
 	}
 }

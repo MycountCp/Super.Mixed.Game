@@ -204,6 +204,16 @@ void function Sv_CreateGunShield( entity titan, entity weapon, entity shieldWeap
 
 			if ( IsValid( vortexSphere ) )
 			{
+				#if TITAN_REBALANCE_LOADOUT
+				// modified condition // 新增设定
+				//if ( IsValid( titan ) )
+				//{
+					//entity soul = titan.GetTitanSoul()
+					//if ( IsValid( soul ) && SoulHasPassive( soul, ePassives.PAS_LEGION_GUNSHIELD ) )
+						//soul.SetShieldHealth( minint( soul.GetShieldHealthMax(), soul.GetShieldHealth() + vortexSphere.GetHealth() ) )
+				//}
+				// 枪盾时间结束后根据枪盾血量回盾
+				#endif
 				vortexSphere.Destroy()
 			}
 			else if ( IsValid( titan ) )
@@ -276,7 +286,7 @@ entity function CreateGunShieldVortexSphere( entity player, entity vortexWeapon,
 	bool hasShieldUpgrade = false
 	if( SoulHasPassive( soul, ePassives.PAS_LEGION_GUNSHIELD ) || shieldWeapon.HasMod( "fd_gun_shield" ) || shieldWeapon.HasMod( "pas_legion_gunshield" ) )
 		hasShieldUpgrade = true
-	
+
 	if ( hasShieldUpgrade )
 		health = PAS_LEGION_SHEILD_HEALTH
 	else

@@ -80,7 +80,7 @@ void function OnAbilityChargeEnd_FlameWave( entity weapon )
 		if ( owner.IsPlayer() )
 			owner.SetTitanDisembarkEnabled( true )
 		OnAbilityChargeEnd_TitanCore( weapon )
-		
+
 		// anim fix for titanpick
 		TEMP_FlameWaveAnimFix( owner )
 	#endif // #if SERVER
@@ -271,9 +271,7 @@ void function FlameWave_DamagedPlayerOrNPC( entity ent, var damageInfo )
 	}
 
 	entity attacker = DamageInfo_GetAttacker( damageInfo )
-	// adding friendlyfire support!
-	//if ( !IsValid( attacker ) || attacker.GetTeam() == ent.GetTeam() )
-	if ( !IsValid( attacker ) || ( attacker.GetTeam() == ent.GetTeam() && !FriendlyFire_IsEnabled() ) )
+	if ( !IsValid( attacker ) || attacker.GetTeam() == ent.GetTeam() )
 		return
 
 	array<entity> weapons = attacker.GetMainWeapons()
@@ -283,6 +281,17 @@ void function FlameWave_DamagedPlayerOrNPC( entity ent, var damageInfo )
 			DamageInfo_ScaleDamage( damageInfo, FD_FIRE_DAMAGE_SCALE )
 		if ( weapons[0].HasMod( "fd_hot_streak" ) )
 			UpdateScorchHotStreakCoreMeter( attacker, DamageInfo_GetDamage( damageInfo ) )
+	}
+
+	//modified condition
+	entity coreweapon = attacker.GetOffhandWeapon( OFFHAND_EQUIPMENT ) // 获取攻击者的核心武器
+	if ( IsValid( coreweapon ) ) // 检查核心武器是否可用
+	{
+		int damageSource = DamageInfo_GetDamageSourceIdentifier( damageInfo ) // 获取当前伤害来源
+		// coreweapon.Hasmod( "pas_scorch_flamecore" ): 检查核心武器是否有一片焦土
+		// damgeSource == eDamgeSourceId.mp_titancore_flame_wave_secondary: 检查当前伤害来源是否为来自一片焦土的伤害
+		if ( coreweapon.HasMod( "pas_scorch_flamecore" ) )
+		    DamageInfo_ScaleDamage( damageInfo, 1.67 ) // scaleDamage: 倍增伤害，第二参数为伤害的倍率值（这里为2.5倍）
 	}
 }
 

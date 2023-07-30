@@ -50,7 +50,7 @@ var function OnWeaponPrimaryAttack_FlameWall( entity weapon, WeaponPrimaryAttack
 
 	if( weapon.HasMod( "wrecking_ball" ) && weaponOwner.IsPlayer() )
 		return OnWeaponPrimaryAttack_weapon_wrecking_ball( weapon, attackParams )
-		
+
 	bool shouldPredict = weapon.ShouldPredictProjectiles()
 	#if CLIENT
 		if ( !shouldPredict )
@@ -146,18 +146,22 @@ bool function CreateThermiteWallSegment( entity projectile, int projectileCount,
 		if ( mods.contains( "pas_scorch_flamecore" ) )
 		{
 			damageSource = eDamageSourceId.mp_titancore_flame_wave_secondary
-			duration = 1.5
+		#if TITAN_REBALANCE_LOADOUT
+			duration = 5 // 一片焦土残留铝热的时间 (原版为1.5)
+		#else //原版表现
+			duration = 1.5 // 一片焦土残留铝热的时间 (原版为1.5)
+		#endif
 		}
 		else
 		{
 			damageSource = eDamageSourceId.mp_titanweapon_flame_wall
 			duration = mods.contains( "pas_scorch_firewall" ) ? PAS_SCORCH_FIREWALL_DURATION : FLAME_WALL_THERMITE_DURATION
-			
+
 			// modified: flamewall_grenade
 			if( mods.contains( "flamewall_grenade" ) )
 				duration = THERMITE_GRENADE_BURN_TIME
 		}
-		
+
 
 		if ( IsSingleplayer() )
 		{
@@ -241,9 +245,7 @@ void function FlameWall_DamagedTarget( entity ent, var damageInfo )
 	Scorch_SelfDamageReduction( ent, damageInfo )
 
 	entity attacker = DamageInfo_GetAttacker( damageInfo )
-	// adding friendlyfire support!
-	//if ( !IsValid( attacker ) || attacker.GetTeam() == ent.GetTeam() )
-	if ( !IsValid( attacker ) || ( attacker.GetTeam() == ent.GetTeam() && !FriendlyFire_IsEnabled() ) )
+	if ( !IsValid( attacker ) || attacker.GetTeam() == ent.GetTeam() )
 		return
 
 	array<entity> weapons = attacker.GetMainWeapons()

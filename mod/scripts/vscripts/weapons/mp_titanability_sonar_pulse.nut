@@ -148,9 +148,13 @@ void function SonarPulseThink( entity enemy, vector position, int team, entity s
 	enemy.EndSignal( "OnDestroy" )
 
 	int statusEffect = 0
-	
+
 	if ( hasDamageAmp )
-		statusEffect = StatusEffect_AddEndless( enemy, eStatusEffect.damage_received_multiplier, 0.25 )
+	#if TITAN_REBALANCE_LOADOUT
+		statusEffect = StatusEffect_AddEndless( enemy, eStatusEffect.damage_received_multiplier, 0.18 ) // 声纳增加数值，这里是18%的增伤
+	#else //原版表现
+		statusEffect = StatusEffect_AddEndless( enemy, eStatusEffect.damage_received_multiplier, 0.20 ) // 声纳增加数值，这里是18%的增伤
+	#endif
 	else if( isOgreSonar )
 		statusEffect = StatusEffect_AddEndless( enemy, eStatusEffect.damage_received_multiplier, 0.1 )
 	SonarStart( enemy, position, team, sonarOwner )

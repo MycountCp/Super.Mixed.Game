@@ -10,6 +10,10 @@ global function ServerCallback_VanguardUpgradeMessage
 const LASER_CHAGE_FX_1P = $"P_handlaser_charge"
 const LASER_CHAGE_FX_3P = $"P_handlaser_charge"
 const FX_SHIELD_GAIN_SCREEN		= $"P_xo_shield_up"
+const int PAS_VANGUARD_DOOM_HEAL = 2500
+const int PAS_VANGUARD_DOOM_HEAL_MAX = 500
+const int PAS_UPGRADE_SHIELDHEAL_MAX = 2500
+const float PAS_VANGUARD_DOOM_DIMINISH = 0.5
 
 void function UpgradeCore_Init()
 {
@@ -19,6 +23,42 @@ void function UpgradeCore_Init()
 	PrecacheParticleSystem( LASER_CHAGE_FX_1P )
 	PrecacheParticleSystem( LASER_CHAGE_FX_3P )
 }
+
+//#if TITAN_REBALANCE_LOADOUT
+//void function PasVanguardDoom_HealOnCore ( entity owner, entity soul  )
+//{
+    //if( SoulHasPassive( soul, ePassives.PAS_VANGUARD_DOOM ) )
+    //{
+		//table soulDotS = expect table( soul.s )
+		//if ( !( "pas_vanguard_doom_heal" in soulDotS ) )
+			//soulDotS.pas_vanguard_doom_heal <- PAS_VANGUARD_DOOM_HEAL
+		//int amount = expect int( soulDotS.pas_vanguard_doom_heal )
+
+        //if( soul.IsDoomed() )
+        //{
+            //int trgtHealth = amount + owner.GetHealth()
+            //int maxHealth = owner.GetMaxHealth()
+            //if ( trgtHealth > maxHealth )
+            //{
+				//int shields = soul.GetShieldHealth()
+                //UndoomTitan( owner, 1 )
+                //owner.SetHealth( minint( PAS_VANGUARD_DOOM_HEAL_MAX, trgtHealth - maxHealth ) )
+				//soul.SetShieldHealth( minint( 2500, shields ) )
+				//soul.SetShieldHealthMax( 2500 )
+            //}
+            //else
+                //owner.SetHealth( trgtHealth )
+        //}
+        //else if ( owner.GetHealth() < PAS_VANGUARD_DOOM_HEAL_MAX )
+		//{
+			//int healthRestoreTo =  minint( PAS_VANGUARD_DOOM_HEAL_MAX, owner.GetHealth() + PAS_VANGUARD_DOOM_HEAL )
+			//amount = healthRestoreTo - owner.GetHealth() //依然计算amount，来兼容我想重新加上回血衰减的时候
+            //owner.SetHealth( healthRestoreTo )
+		//}
+		// soulDotS.pas_vanguard_doom_heal -= int( amount * PAS_VANGUARD_DOOM_DIMINISH )
+    //}
+//}
+//#endif
 
 #if SERVER
 var function OnWeaponNpcPrimaryAttack_UpgradeCore( entity weapon, WeaponPrimaryAttackParams attackParams )
@@ -286,6 +326,7 @@ var function OnWeaponPrimaryAttack_UpgradeCore( entity weapon, WeaponPrimaryAtta
 		int statesIndex = owner.FindBodyGroup( "states" )
 		if ( statesIndex > 0 )
 			owner.SetBodygroup( statesIndex, 1 )
+			//PasVanguardDoom_HealOnCore( owner, soul ) // By calling this here, Superior Chassis will not grant its full health increase if Monarch undooms with it.
 	#endif
 
 	#if CLIENT
@@ -327,7 +368,14 @@ void function UpgradeCoreThink( entity weapon, float coreDuration )
 	EmitSoundOnEntityOnlyToPlayer( owner, owner, "Titan_Monarch_Smart_Core_ActiveLoop_1P" )
 	EmitSoundOnEntityExceptToPlayer( owner, owner, "Titan_Monarch_Smart_Core_Activated_3P" )
 	entity soul = owner.GetTitanSoul()
-	soul.SetShieldHealth( soul.GetShieldHealthMax() )
+	if ( SoulHasPassive( soul, ePassives.PAS_VANGUARD_DOOM ) )
+	{
+		int newShieldHealth = minint( PAS_UPGRADE_SHIELDHEAL_MAX, soul.GetShieldHealthMax() )
+		soul.SetShieldHealth( newShieldHealth )
+	}
+	else
+    	soul.SetShieldHealth( soul.GetShieldHealthMax() )
+    // minint: 获取其参数内的最小值。这里意思为：若恢复后的盾值大于最大盾值，则选用最大盾值，以防止崩溃
 
 	OnThreadEnd(
 	function() : ( weapon, owner, soul )

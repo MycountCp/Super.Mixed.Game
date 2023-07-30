@@ -146,7 +146,11 @@ bool function CreateThermiteWallSegment( entity projectile, int projectileCount,
 		if ( mods.contains( "pas_scorch_flamecore" ) )
 		{
 			damageSource = eDamageSourceId.mp_titancore_flame_wave_secondary
-			duration = 1.5
+			#if TITAN_REBALANCE_LOADOUT
+			duration = 5 // 一片焦土残留铝热的时间 (原版为1.5)
+			#else //原版表现
+			duration = 1.5 // 一片焦土残留铝热的时间 (原版为1.5)
+			#endif
 		}
 		else
 		{

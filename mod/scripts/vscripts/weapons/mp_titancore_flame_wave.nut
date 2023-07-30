@@ -284,6 +284,19 @@ void function FlameWave_DamagedPlayerOrNPC( entity ent, var damageInfo )
 		if ( weapons[0].HasMod( "fd_hot_streak" ) )
 			UpdateScorchHotStreakCoreMeter( attacker, DamageInfo_GetDamage( damageInfo ) )
 	}
+
+	//modified condition
+	#if TITAN_REBALANCE_LOADOUT
+	entity coreweapon = attacker.GetOffhandWeapon( OFFHAND_EQUIPMENT ) // 获取攻击者的核心武器
+	if ( IsValid( coreweapon ) ) // 检查核心武器是否可用
+	{
+		int damageSource = DamageInfo_GetDamageSourceIdentifier( damageInfo ) // 获取当前伤害来源
+		// coreweapon.Hasmod( "pas_scorch_flamecore" ): 检查核心武器是否有一片焦土
+		// damgeSource == eDamgeSourceId.mp_titancore_flame_wave_secondary: 检查当前伤害来源是否为来自一片焦土的伤害
+		if ( coreweapon.HasMod( "pas_scorch_flamecore" ) )
+		    DamageInfo_ScaleDamage( damageInfo, 1.67 ) // scaleDamage: 倍增伤害，第二参数为伤害的倍率值（这里1.6倍）
+	}
+	#endif
 }
 
 void function ZeroDamageAndClearInflictorArray( entity ent, var damageInfo )

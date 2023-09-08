@@ -80,6 +80,13 @@ global struct RaySphereIntersectStruct
 	float leaveFrac
 }
 
+// modified to add settings override
+struct
+{
+	// character name override
+	table<entity, string> titanCharacterNameOverride
+} file
+
 void function Utility_Shared_Init()
 {
 	RegisterSignal( TRIGGER_INTERNAL_SIGNAL )
@@ -1667,6 +1674,9 @@ bool function IsPetTitan( titan )
 {
 	Assert( titan.IsTitan() )
 
+	if ( !titan.GetTitanSoul() )
+		return false
+
 	return titan.GetTitanSoul().GetBossPlayer()	!= null
 }
 
@@ -2972,11 +2982,6 @@ string function GenerateTitanOSAlias( entity player, string aliasSuffix )
 
 		Assert( IsValid( titan ) )
 		string titanCharacterName = GetTitanCharacterName( titan )
-
-		// client install required: force use bt's voiceline if model is titan_buddy.mdl
-		if( titan.GetModelName() == $"models/titans/buddy/titan_buddy.mdl" )
-			return "diag_gs_titanBt_" + aliasSuffix
-
 		string primeTitanString = ""
 
 		if ( IsTitanPrimeTitan( titan ) )
@@ -4161,8 +4166,34 @@ string function GetTitanCharacterName( entity titan )
 		setFile = expect string( Dev_GetAISettingByKeyField_Global( aiSettingsFile, "npc_titan_player_settings" ) )
 	}
 
+	// modified: character name override
+	entity soul = titan.GetTitanSoul()
+	if ( IsValid( soul ) && soul in file.titanCharacterNameOverride )
+		return file.titanCharacterNameOverride[ soul ]
+	//
+
 	return GetTitanCharacterNameFromSetFile( setFile )
 }
+
+// modified: character name override
+void function SetTitanSoulCharacterNameOverride( entity soul, string characterName )
+{
+	if ( !( soul in file.titanCharacterNameOverride ) )
+		file.titanCharacterNameOverride[ soul ] <- ""
+	file.titanCharacterNameOverride[ soul ] = characterName
+}
+
+bool function ResetTitanSoulCharacterName( entity soul )
+{
+	if ( soul in file.titanCharacterNameOverride )
+	{
+		delete file.titanCharacterNameOverride[ soul ]
+		return true
+	}
+
+	return false
+}
+//
 
 bool function IsTitanPrimeTitan( entity titan )
 {

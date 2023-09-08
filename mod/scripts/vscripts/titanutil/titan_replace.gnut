@@ -6,6 +6,7 @@ global function TitanReplace_Init
 
 // settings
 global function TitanReplace_SetEnabled
+global function TitanReplace_EnableNorthstarReBalance
 
 ///// acrossFile utilities
 global function TitanReplace_GiveTitanLoadoutReplace
@@ -56,6 +57,7 @@ struct
 {
 	// settings
 	bool defaultReplaceEnabled = false
+	bool northstarReBalanceEnabled
 
 	// player table
 	table<entity, string> soulTitleTable
@@ -79,6 +81,11 @@ void function TitanReplace_Init()
 void function TitanReplace_SetEnabled( bool enabled )
 {
 	file.defaultReplaceEnabled = enabled
+}
+
+void function TitanReplace_EnableNorthstarReBalance( bool enable )
+{
+	file.northstarReBalanceEnabled = enable
 }
 
 void function OnTitanSpawned( entity titan )
@@ -119,8 +126,17 @@ void function TitanReplace_GiveTitanLoadoutReplace( entity titan )
 
 	switch( modelName )
 	{
+		// northstar balance...
+		case $"models/titans/light/titan_light_raptor.mdl":
+			if ( file.northstarReBalanceEnabled && titan.GetMainWeapons().len() > 0 )
+			{
+				entity mainWeapon = titan.GetMainWeapons()[0]
+				mainWeapon.AddMod( "rebalanced_weapon" )
+			}
+			break
+	
 		case $"models/titans/medium/titan_medium_vanguard.mdl":
-			//TitanPick_SoulSetEnableWeaponPick( titanSoul, false ) // setting players unable to replace weapons from ground
+			//TitanPick_SoulSetEnableWeaponPick( titanSoul, false ) // set players unable to replace weapons from ground
 			break
 
 		case $"models/titans/medium/titan_medium_tone_prime.mdl":
@@ -1351,8 +1367,12 @@ void function TitanReplace_BecomeBison( entity titan, bool isPickup = false, boo
 
 				//Melee, bison variant
 				//titan.GiveOffhandWeapon( "melee_titan_punch_scorch", OFFHAND_MELEE )
-				titan.GiveOffhandWeapon( "melee_titan_punch_fighter", OFFHAND_MELEE, ["berserker", "berserker_nerfed_damage", "allow_as_primary", "dash_punch", "bison_punch"] )
+				titan.GiveOffhandWeapon( "melee_titan_punch_fighter", OFFHAND_MELEE, ["berserker", "allow_as_primary", "dash_punch", "bison_punch"] )
 				titan.SetActiveWeaponByName( "melee_titan_punch_fighter" )
+				// version2: try to use mp_weapon_gunship_missile as a melee primary placeholder
+				//titan.GiveWeapon( "mp_weapon_gunship_missile", ["titan_electric_fist_primary"] )
+				//titan.GiveOffhandWeapon( "melee_titan_punch_fighter", OFFHAND_MELEE, ["berserker", "dash_punch", "bison_punch"] )
+				//titan.SetActiveWeaponByName( "mp_weapon_gunship_missile" )
 			}
 		}
 	}
@@ -1824,11 +1844,11 @@ void function TitanReplace_BecomeModdedArchon( entity titan, bool isPickup = fal
 				//Weapon
 				entity newWeapon
 				if( passiveType == "Tactical" )
-					newWeapon = titan.GiveWeapon ("mp_titanweapon_sniper", ["arc_cannon", "archon_arc_cannon", "archon_arc_cannon_charge_sound", "chain_reaction"])
+					newWeapon = titan.GiveWeapon ("mp_titanweapon_sniper", ["archon_arc_cannon", "chain_reaction"])
 				else if( passiveType == "Weapon" )
-					newWeapon = titan.GiveWeapon ("mp_titanweapon_sniper", ["arc_cannon", "archon_arc_cannon", "archon_arc_cannon_charge_sound", "generator_mod"])
+					newWeapon = titan.GiveWeapon ("mp_titanweapon_sniper", ["archon_arc_cannon", "generator_mod"])
 				else
-					newWeapon = titan.GiveWeapon ("mp_titanweapon_sniper", ["arc_cannon", "archon_arc_cannon", "archon_arc_cannon_charge_sound"])
+					newWeapon = titan.GiveWeapon ("mp_titanweapon_sniper", ["archon_arc_cannon"])
 				if ( IsValid( newWeapon ) )
 				{
 					newWeapon.SetSkin( skinIndex )
@@ -1837,27 +1857,27 @@ void function TitanReplace_BecomeModdedArchon( entity titan, bool isPickup = fal
 
 				//Defence
 				if( passiveType == "Defence" )
-					titan.GiveOffhandWeapon("mp_titanweapon_vortex_shield", OFFHAND_SPECIAL, ["slow_recovery_vortex", "shock_shield", "immobilizer_shield"] )
+					titan.GiveOffhandWeapon("mp_titanweapon_vortex_shield", OFFHAND_SPECIAL, ["slow_recovery_vortex", "archon_shock_shield", "immobilizer_shield"] )
 				else
-					titan.GiveOffhandWeapon("mp_titanweapon_vortex_shield", OFFHAND_SPECIAL, ["slow_recovery_vortex", "shock_shield"] )
+					titan.GiveOffhandWeapon("mp_titanweapon_vortex_shield", OFFHAND_SPECIAL, ["slow_recovery_vortex", "archon_shock_shield"] )
 					
 				//Tactical
 				//if(SoulHasPassive( soul, ePassives.PAS_ION_LASERCANNON ))
-				//	titan.GiveOffhandWeapon("mp_titanability_laser_trip", OFFHAND_ANTIRODEO, ["tesla_node", "dual_nodes"] )
+				//	titan.GiveOffhandWeapon("mp_titanability_laser_trip", OFFHAND_ANTIRODEO, ["archon_tesla_node", "dual_nodes"] )
 				//else
-					titan.GiveOffhandWeapon("mp_titanability_laser_trip", OFFHAND_ANTIRODEO, ["tesla_node"] )
+					titan.GiveOffhandWeapon("mp_titanability_laser_trip", OFFHAND_ANTIRODEO, ["archon_tesla_node"] )
 
 				//Offence
 				if( passiveType == "Offence" )
-					titan.GiveOffhandWeapon("mp_titanweapon_stun_laser", OFFHAND_ORDNANCE, ["charge_ball", "thylord_module"] )
+					titan.GiveOffhandWeapon("mp_titanweapon_stun_laser", OFFHAND_ORDNANCE, ["archon_charge_ball", "thylord_module"] )
 				else
-					titan.GiveOffhandWeapon("mp_titanweapon_stun_laser", OFFHAND_ORDNANCE, ["charge_ball"] )
+					titan.GiveOffhandWeapon("mp_titanweapon_stun_laser", OFFHAND_ORDNANCE, ["archon_charge_ball"] )
 
 				//Titan Core
 				if( passiveType == "Core" )
-					titan.GiveOffhandWeapon( "mp_titancore_flame_wave", OFFHAND_EQUIPMENT, ["storm_core", "bring_the_thunder"] )
+					titan.GiveOffhandWeapon( "mp_titancore_flame_wave", OFFHAND_EQUIPMENT, ["archon_storm_core", "bring_the_thunder"] )
 				else
-					titan.GiveOffhandWeapon( "mp_titancore_flame_wave", OFFHAND_EQUIPMENT, ["storm_core"] )
+					titan.GiveOffhandWeapon( "mp_titancore_flame_wave", OFFHAND_EQUIPMENT, ["archon_storm_core"] )
 
 				//Melee
 				titan.GiveOffhandWeapon( "melee_titan_punch_ion", OFFHAND_MELEE )
@@ -2079,6 +2099,7 @@ void function RegisterRoninTitanPick()
 	
 	// invalid mods
 	TitanPick_AddIllegalWeaponMod( "super_charged" )
+	MeleeSyncedTitan_AddModToRemoveOnLoadoutReplace( "super_charged" )
 
 	// passives
 	TitanPick_AddChangablePassive( ePassives.PAS_RONIN_ARCWAVE )
@@ -2346,6 +2367,7 @@ void function RegisterLegionTitanPick()
 	// invalid mods
 	// smart core
 	TitanPick_AddIllegalWeaponMod( "Smart_Core" )
+	MeleeSyncedTitan_AddModToRemoveOnLoadoutReplace( "Smart_Core" )
 	// close range mode
 	TitanPick_AddIllegalWeaponMod( "CloseRangePowerShot" )
 	TitanPick_AddIllegalWeaponMod( "pas_CloseRangePowerShot" )
@@ -2643,6 +2665,7 @@ void function RegisterArchonTitanPick()
 	
 	// invalid mods
 	TitanPick_AddIllegalWeaponMod( "tesla_core_charged" )
+	MeleeSyncedTitan_AddModToRemoveOnLoadoutReplace( "tesla_core_charged" )
 }
 
 entity function ArchonWeaponWeaponPropFunc( entity weapon, vector origin, vector angles )
@@ -2771,7 +2794,7 @@ entity function ModdedArchonWeaponWeaponPropFunc( entity weapon, vector origin, 
 	if ( weaponName != "mp_titanweapon_sniper" )
 		return // return empty will cancel the weapon drop
 	
-	if ( !mods.contains( "arc_cannon" ) )
+	if ( !mods.contains( "archon_arc_cannon" ) )
 		return
 
 	asset modelName = $"models/weapons/titan_arc_rifle/w_titan_arc_rifle.mdl"
@@ -2789,7 +2812,7 @@ string function ModdedArchonWeaponDisplayNameFunc( entity weapon )
 	if ( weaponName != "mp_titanweapon_sniper" )
 		return "" // return empty will cancel the weapon drop
 	
-	if ( !mods.contains( "arc_cannon" ) )
+	if ( !mods.contains( "archon_arc_cannon" ) )
 		return ""
 
 	return "執政官 技能組"

@@ -131,20 +131,23 @@ void function AITdm_SetLevelReapers( int level )
 	file.levelReapers = level
 }
 
-// Starts skyshow, this also requiers AINs but doesn't crash if they're missing
 void function OnPrematchStart()
 {
-	thread StratonHornetDogfightsIntense()
-}
-
-void function OnPlaying()
-{	
 	// don't run spawning code if ains and nms aren't up to date
 	if ( GetAINScriptVersion() == AIN_REV && GetNodeCount() != 0 )
 	{
 		thread SpawnIntroBatch_Threaded( TEAM_MILITIA )
 		thread SpawnIntroBatch_Threaded( TEAM_IMC )
 	}
+
+	// Starts skyshow, this also requiers AINs but doesn't crash if they're missing
+	if ( !Flag( "LevelHasRoof" ) )
+		thread StratonHornetDogfightsIntense()
+}
+
+void function OnPlaying()
+{
+
 }
 
 // Sets up mode specific hud on client
@@ -293,6 +296,13 @@ void function SpawnIntroBatch_Threaded( int team )
 
 	shipNodes = GetValidIntroDropShipSpawn( podNodes )
 
+	// calculate intro spawn delay
+	float introLength = ClassicMP_GetIntroLength()
+	float introSpawnRequiredTime = expect float( GetDropPodAnimDuration() )
+
+	float introSpawnWait = introLength - introSpawnRequiredTime
+	if ( introSpawnWait > 0 )
+		wait introSpawnWait
 
 	// Spawn logic
 	int startIndex = 0
@@ -335,7 +345,7 @@ void function SpawnIntroBatch_Threaded( int team )
 		first = false
 	}
 	
-	wait 15
+	wait 15.0
 	
 	thread Spawner_Threaded( team )
 }
@@ -362,44 +372,56 @@ void function Spawner_Threaded( int team )
 		// REAPERS
 		if ( file.reapers[ index ] )
 		{
-			array< entity > points = SpawnPoints_GetTitan()
-			if ( reaperCount < file.reapersPerTeam )
+			int reapersToSpawn = file.reapersPerTeam - reaperCount
+			if ( reapersToSpawn > 0 )
 			{
-				entity node = points[ GetSpawnPointIndex( points, team ) ]
-				waitthread AiGameModes_SpawnReaper( node.GetOrigin(), node.GetAngles(), team, "npc_super_spectre_aitdm", ReaperHandler )
+				for ( int i = 0; i < reapersToSpawn; i++ )
+				{
+					if ( i > 0 )
+						wait 2.0 // delay before next spawn
+
+					array< entity > points = SpawnPoints_GetTitan()
+					entity node = points[ GetSpawnPointIndex( points, team ) ]
+					thread AiGameModes_SpawnReaper( node.GetOrigin(), node.GetAngles(), team, "npc_super_spectre_aitdm", ReaperHandler )
+				}
+
+				wait 8.0 // wait after each spawn wave
 			}
 		}
 		
 		// NORMAL SPAWNS
-		if ( count < file.squadsPerTeam * 4 - 2 )
+		int squadsToSpawn = ( file.squadsPerTeam * SQUAD_SIZE - 2 - count ) / SQUAD_SIZE
+		if ( squadsToSpawn > 0 )
 		{
-			string ent = file.podEntities[ index ][ RandomInt( file.podEntities[ index ].len() ) ]
-			
-			array< entity > points = GetZiplineDropshipSpawns()
-			// Prefer dropship when spawning grunts
-			if ( ent == "npc_soldier" && points.len() != 0 )
+			for ( int i = 0; i < squadsToSpawn; i++ )
 			{
-				if ( RandomInt( points.len() ) )
+				if ( i > 0 )
+					wait 2.0 // delay before next spawn
+
+				string ent = file.podEntities[ index ][ RandomInt( file.podEntities[ index ].len() ) ]
+				
+				array< entity > points = GetZiplineDropshipSpawns()
+				// Prefer dropship when spawning grunts
+				if ( CoinFlip() && ent == "npc_soldier" && points.len() != 0 )
 				{
-					entity node = points[ GetSpawnPointIndex( points, team ) ]
-					waitthread Aitdm_SpawnDropShip( node, team )
-					continue
+					if ( RandomInt( points.len() ) )
+					{
+						entity node = points[ GetSpawnPointIndex( points, team ) ]
+						thread AiGameModes_SpawnDropShip( node.GetOrigin(), node.GetAngles(), team, 4, SquadHandler )
+						continue
+					}
 				}
+				
+				points = SpawnPoints_GetDropPod()
+				entity node = points[ GetSpawnPointIndex( points, team ) ]
+				thread AiGameModes_SpawnDropPod( node.GetOrigin(), node.GetAngles(), team, ent, SquadHandler )
 			}
-			
-			points = SpawnPoints_GetDropPod()
-			entity node = points[ GetSpawnPointIndex( points, team ) ]
-			waitthread AiGameModes_SpawnDropPod( node.GetOrigin(), node.GetAngles(), team, ent, SquadHandler )
+
+			wait 15.0 // wait after each spawn wave
 		}
 		
 		WaitFrame()
 	}
-}
-
-void function Aitdm_SpawnDropShip( entity node, int team )
-{
-	thread AiGameModes_SpawnDropShip( node.GetOrigin(), node.GetAngles(), team, 4, SquadHandler )
-	wait 20
 }
 
 // Based on points tries to balance match
@@ -464,6 +486,41 @@ int function GetSpawnPointIndex( array< entity > points, int team )
 	return RandomInt( points.len() )
 }
 
+// utility for handling assault target
+bool function IsValidNPCAssaultTarget( entity ent )
+{
+	// got killed but still valid?
+	if ( !IsAlive( ent ) )
+		return false
+
+	// cannot be targeted?
+	if ( ent.GetNoTarget() ) 
+		return false
+
+	// is invulnerable?
+	if ( ent.IsInvulnerable() )
+		return false
+	
+	// npc
+	if ( ent.IsNPC() )
+	{
+		// titan
+		if ( ent.IsTitan() )
+		{
+			// is hot dropping?
+			if ( ent.e.isHotDropping )
+				return false
+
+			// is player owned?
+			if ( ent.GetBossPlayer() )
+				return false
+		}
+	}
+
+	// all checks passed
+	return true
+}
+
 // tells infantry where to go
 // In vanilla there seem to be preset paths ai follow to get to the other teams vone and capture it
 // AI can also flee deeper into their zone suggesting someone spent way too much time on this
@@ -520,16 +577,24 @@ void function SquadHandler( array<entity> guys )
 
 		// Get point and send our whole squad to it
 		points = []
-		if ( hasHeavyArmorWeapon )
-			points.extend( GetNPCArrayOfEnemies( team ) )
-		else
+		array<entity> pointsToSearch = []
+		// try to find from npc targets
+		pointsToSearch.extend( GetNPCArrayOfEnemies( team ) )
+		// start searching
+		foreach ( entity ent in pointsToSearch )
 		{
-			foreach ( entity npc in GetNPCArrayOfEnemies( team ) )
-			{
-				if ( npc.GetArmorType() != ARMOR_TYPE_HEAVY ) // only search for npcs with light armor
-					points.append( npc )
-			}
+			// general check
+			if ( !IsValidNPCAssaultTarget( ent ) )
+				continue
+
+			// infantry specific
+			// only search for targets with light armor if we don't have proper weapon
+			if ( !hasHeavyArmorWeapon && ent.GetArmorType() == ARMOR_TYPE_HEAVY )
+				continue
+
+			points.append( ent )
 		}
+
 		ArrayRemoveDead( points ) // remove dead targets
 		if ( points.len() == 0 ) // can't find any points here
 			continue
@@ -587,9 +652,22 @@ void function ReaperHandler( entity reaper )
 		if ( !IsAlive( reaper ) )
 			return
 
-		points = [] // clean up last point
-		points.extend( GetNPCArrayOfEnemies( team ) )
-		points.extend( GetPlayerArrayOfEnemies_Alive( team ) )
+		points = [] // clean up last points
+		array<entity> pointsToSearch = []
+		// try to find from npc targets
+		pointsToSearch.extend( GetNPCArrayOfEnemies( team ) )
+		// try to find from alive player targets
+		pointsToSearch.extend( GetPlayerArrayOfEnemies_Alive( team ) )
+		// start searching
+		foreach ( entity ent in pointsToSearch )
+		{
+			// general check
+			if ( !IsValidNPCAssaultTarget( ent ) )
+				continue
+
+			points.append( ent )
+		}
+
 		ArrayRemoveDead( points ) // remove dead targets
 		if ( points.len() == 0 )
 			continue

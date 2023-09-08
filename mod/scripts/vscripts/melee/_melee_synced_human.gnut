@@ -62,23 +62,22 @@ bool function MeleeThread_PilotVsEnemyInternal( SyncedMelee action, entity attac
 	Assert( IsAlive( target ) )
 
 	// could get some tf1 execution by using it
-	bool useClassicExecution = false
+	bool useClassicExecution = GetCurrentPlaylistVarInt( "classic_execution_enabled", 0 ) == 1
 
-	// modified in _melee_synced_nolimit.gnut
+	// player necksnapping
 	if ( file.playerDoClassicExecutions && attacker.IsPlayer() )
 		useClassicExecution = true
-	// modified in _melee_synced_npc.gnut
+	// npc necksnapping
 	if ( file.npcDoClassicExecutions && attacker.IsNPC() )
 		useClassicExecution = true
 	
 	// ent in overwrite table
-	if( attacker in file.humanSizedDoClassicExecution )
-		useClassicExecution = file.humanSizedDoClassicExecution[ attacker ]
+	if ( attacker in file.humanSizedDoClassicExecution && file.humanSizedDoClassicExecution[ attacker ] )
+		useClassicExecution = true
 
 	bool isAttackerRef
 #if MP
-	//if ( GetCurrentPlaylistVarInt( "fp_embark_enabled", eFirstPersonSequenceForce1PSetting.DISABLED ) >= eFirstPersonSequenceForce1PSetting.CLASSIC_EXECUTION )
-	if ( useClassicExecution ) // really should be a new executions file
+	if ( useClassicExecution )
 	{
 		action = clone action // have to clone this... otherwise it will modify directly to the execution struct
 		action.attackerAnimation1p = "ptpov_rspn101_melee_necksnap_rear"
@@ -121,6 +120,9 @@ bool function MeleeThread_PilotVsEnemyInternal( SyncedMelee action, entity attac
 		}
 
 		// magical fix on screen effect
+		// simply removing "screen_blackout" anim event can be weird
+		//if ( HasAnimEvent( target, "screen_blackout" ) )
+		//	DeleteAnimEvent( target, "screen_blackout" )
 		if ( target.IsPlayer() )
 			thread ClassicExecution_FadeFromBlackOnDeath( target )
 
@@ -138,14 +140,11 @@ bool function MeleeThread_PilotVsEnemyInternal( SyncedMelee action, entity attac
 		// need to hardcode false here otherwise it just doesnt work for some reason??
 		isAttackerRef = false
 
-		if ( attacker.IsPlayer() )
-			thread ForceRemoveCinematic( attacker ) // remove DOF for classic execution
-		if ( target.IsPlayer() )
-			thread ForceRemoveCinematic( target ) // remove DOF for classic execution
+		ForceRemoveExecutionCinematic( attacker ) // remove DOF and hud hidding for classic execution
+		ForceRemoveExecutionCinematic( target ) // remove DOF and hud hidding for classic execution
 	}
-	else 
+	else
 #endif
-
 	isAttackerRef = IsAttackerRef( action, target )
 
 	vector attackerOrigin = attacker.GetOrigin()
@@ -246,6 +245,10 @@ struct PilotVsEnemyStruct
 	bool clearInvulnerable = false
 	bool wasCloaked = false
 	float cloakEndTime = 0.0
+
+	// for targets. they should be ignored while being executed
+	// breaks vanilla behavior but whatever
+	bool clearNoTarget = false
 }
 
 ///// modified functions!!!! /////
@@ -257,6 +260,7 @@ void function ClassicExecution_DelayedEmitSoundForExecution( entity attacker, en
 }
 
 // for better visual
+// now we just remove "screen_blackout" anim event for player! never fade to black
 void function ClassicExecution_FadeFromBlackOnDeath( entity victim )
 {
 	if ( !victim.IsPlayer() )
@@ -275,14 +279,13 @@ void function ClassicExecution_FadeFromBlackOnDeath( entity victim )
 }
 
 // disable dof
-void function ForceRemoveCinematic( entity ent )
+void function ForceRemoveExecutionCinematic( entity ent )
 {
-	if ( !ent.IsPlayer() )
-		return
-
-	wait 0.1
-	if ( IsValid( ent ) )
-		RemoveCinematicFlag( ent, CE_FLAG_EXECUTION )
+	if ( ent.IsPlayer() )
+	{
+		RemoveCinematicFlag( ent, CE_FLAG_TITAN_3P_CAM ) // turn on hud
+		RemoveCinematicFlag( ent, CE_FLAG_EXECUTION ) // turn off dof
+	}
 }
 ///// end
 
@@ -310,24 +313,22 @@ void function RestoreCloakAfterMelee( entity player, PilotVsEnemyStruct dataStru
 }
 
 ///// modified function!!!! /////
-float function HACK_GetHumanSyncedMeleeSequenceDuration( entity ent, string animationName )
+float function GetHumanSyncedMeleeSequenceDurationWithErrorHandle( entity ent, string animationName )
 {
-	float duration
-	try
+	// error animation handle
+	if ( !ent.Anim_HasSequence( animationName ) )
 	{
-		duration = ent.GetSequenceDuration( animationName )
-	}
-	catch( ex )
-	{
-		asset modelName = GetBestModelNameForErrorAnim( ent )
-		asset orgModel = ent.GetModelName()
-		ent.SetModel( modelName )
-		print( "Sequence on " + string( orgModel ) + " Not Valid! Resetting to " + string( modelName ) )
-		duration = ent.GetSequenceDuration( animationName )
-		ent.SetModel( orgModel )
+		// log print
+		//asset modelName = GetBestModelNameForErrorAnim( guy, animationName )
+		//print( "Model animation error in GetHumanSyncedMeleeSequenceDurationWithErrorHandle()! Resetting to " + string( modelName ) )
+		//print( "Entity's original model is " + string( player.GetModelName() ) )
+		//print( "This animation is: " + animationName )
+		
+		// error animation handle start
+		thread TrackErrorAnimationEnd( ent, animationName )
 	}
 
-	return duration
+	return ent.GetSequenceDuration( animationName )
 }
 
 void function HandleCloakExecutionWithCloakedAttacker( entity player, PilotVsEnemyStruct dataStruct, SyncedMelee action  )
@@ -337,7 +338,7 @@ void function HandleCloakExecutionWithCloakedAttacker( entity player, PilotVsEne
 
 	// modified for unsupported models!
 	//float attackerSequenceEndTime = Time() + player.GetSequenceDuration( action.attackerAnimation3p )
-	float attackerSequenceEndTime = Time() + HACK_GetHumanSyncedMeleeSequenceDuration( player, action.attackerAnimation3p )
+	float attackerSequenceEndTime = Time() + GetHumanSyncedMeleeSequenceDurationWithErrorHandle( player, action.attackerAnimation3p )
 	float scheduledCloakEndTime = player.GetCloakEndTime()
 
 	//printt( "attackerSequenceEndTime: " + attackerSequenceEndTime + ", scheduledCloakEndTime: " + scheduledCloakEndTime )
@@ -445,7 +446,7 @@ void function MeleeThread_PilotVsEnemy_Attacker( SyncedMelee action, entity atta
 
 	// modified for unsupported models!!!
 	//float duration = attacker.GetSequenceDuration( attackerSequence.thirdPersonAnim )
-	float duration = HACK_GetHumanSyncedMeleeSequenceDuration( attacker, attackerSequence.thirdPersonAnim  )
+	float duration = GetHumanSyncedMeleeSequenceDurationWithErrorHandle( attacker, attackerSequence.thirdPersonAnim  )
 
 	if ( attacker.IsPlayer() )
 	{
@@ -477,7 +478,7 @@ void function MeleeThread_PilotVsEnemy_Attacker( SyncedMelee action, entity atta
 	if ( isAttackerRef )
 	{
 		#if MP
-		if ( ShouldForce1PFirstPersonSequence() && GetCurrentPlaylistVarInt( "fp_embark_enabled", eFirstPersonSequenceForce1PSetting.DISABLED ) < eFirstPersonSequenceForce1PSetting.CLASSIC_EXECUTION )
+		if ( attacker.IsPlayer() && GetCurrentPlaylistVarInt( "fp_embark_enabled", 0 ) == 1 )
 			FirstPersonSequenceForce1P( attackerSequence, attacker )
 		#endif
 			
@@ -486,7 +487,7 @@ void function MeleeThread_PilotVsEnemy_Attacker( SyncedMelee action, entity atta
 	else
 	{
 		#if MP
-		if ( ShouldForce1PFirstPersonSequence() && GetCurrentPlaylistVarInt( "fp_embark_enabled", eFirstPersonSequenceForce1PSetting.DISABLED ) < eFirstPersonSequenceForce1PSetting.CLASSIC_EXECUTION )
+		if ( attacker.IsPlayer() && GetCurrentPlaylistVarInt( "fp_embark_enabled", 0 ) == 1 )
 			FirstPersonSequenceForce1P( attackerSequence, attacker, target )
 		#endif
 
@@ -543,6 +544,16 @@ void function MeleeThread_PilotVsEnemy_Target( SyncedMelee action, entity attack
 				if ( HasAnimEvent( target, "synced_melee_enable_planting" ) )
 					DeleteAnimEvent( target, "synced_melee_enable_planting" )
 
+				// I wondering one thing: should target been set to invulnerable in vanilla?
+				if ( dataStruct.clearInvulnerable )
+				{
+					target.ClearInvulnerable()
+				}
+				// targets should be ignored while being executed
+				// breaks vanilla behavior but whatever
+				if ( dataStruct.clearNoTarget )
+					target.SetNoTarget( false )
+
 				bool isAlive = IsAlive( target )
 
 				if ( target.IsPlayer() )
@@ -559,7 +570,9 @@ void function MeleeThread_PilotVsEnemy_Target( SyncedMelee action, entity attack
 
 				if ( isAlive )
 				{
-					if ( target.e.markedForExecutionDeath ) //Kill off target if he already reached blackout part of melee
+					// modified: adding force killing target settings
+					//if ( target.e.markedForExecutionDeath ) //Kill off target if he already reached blackout part of melee
+					if ( target.e.markedForExecutionDeath || file.alwaysKillTarget )
 					{
 						entity killCreditAttacker = null //If the attacker disconnected, we don't have a player to give credit to, that's fine. Script will not error
 						if ( IsValid( target.e.syncedMeleeAttacker ) )
@@ -589,13 +602,6 @@ void function MeleeThread_PilotVsEnemy_Target( SyncedMelee action, entity attack
 								AddPlayerScore( attacker, "Execution" )
 						}
 					}
-				}
-
-				// force killing target
-				if ( file.alwaysKillTarget && IsAlive( target ) )
-				{
-					if( IsValid( attacker ) )
-						target.Die( attacker, attacker, { scriptType = DF_KILLSHOT, damageSourceId = eDamageSourceId.human_execution } )
 				}
 
 				if ( IsValid( target.e.syncedMeleeAttacker ) )
@@ -666,10 +672,24 @@ void function MeleeThread_PilotVsEnemy_Target( SyncedMelee action, entity attack
 		}
 	}
 
+	// I wondering one thing: should target been set to invulnerable in vanilla?
+	if ( !target.IsInvulnerable() )
+	{
+		dataStruct.clearInvulnerable = true
+		target.SetInvulnerable()
+	}
+	// targets should be ignored while being executed
+	// breaks vanilla behavior but whatever
+	if ( !target.GetNoTarget() )
+	{
+		dataStruct.clearNoTarget = true
+		target.SetNoTarget( true )
+	}
+
 	if ( isAttackerRef )
 	{
 		#if MP
-		if ( ShouldForce1PFirstPersonSequence() && target.IsPlayer() && GetCurrentPlaylistVarInt( "fp_embark_enabled", eFirstPersonSequenceForce1PSetting.DISABLED ) < eFirstPersonSequenceForce1PSetting.CLASSIC_EXECUTION )
+		if ( target.IsPlayer() && GetCurrentPlaylistVarInt( "fp_embark_enabled", 0 ) == 1 )
 			FirstPersonSequenceForce1P( targetSequence, target, attacker )
 		#endif
 		
@@ -678,7 +698,7 @@ void function MeleeThread_PilotVsEnemy_Target( SyncedMelee action, entity attack
 	else
 	{
 		#if MP
-		if ( ShouldForce1PFirstPersonSequence() && GetCurrentPlaylistVarInt( "fp_embark_enabled", eFirstPersonSequenceForce1PSetting.DISABLED ) < eFirstPersonSequenceForce1PSetting.CLASSIC_EXECUTION )
+		if ( target.IsPlayer() && GetCurrentPlaylistVarInt( "fp_embark_enabled", 0 ) == 1 )
 			FirstPersonSequenceForce1P( targetSequence, target )
 		#endif
 		

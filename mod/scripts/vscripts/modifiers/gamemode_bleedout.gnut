@@ -16,8 +16,9 @@ const string ANSI_COLOR_YELLOW = "\x1b[38;5;11m"
 const array<string> CONNECTING_NOTIFICATIONS = 
 [
     ANSI_COLOR_YELLOW + "流血倒地PVP" + ANSI_COLOR_END,
-	ANSI_COLOR_BLUE + "玩家拥有125生命和100护盾。装备依照高TTK进行平衡，反泰坦武器增加了反铁驭能力" + ANSI_COLOR_END,
-	ANSI_COLOR_BLUE + "血量归零后不会立即死亡而是会倒地等待救助。期间按住开火使用击倒护盾，在倒地玩家的背后按下E键进行处决" + ANSI_COLOR_END,
+	ANSI_COLOR_BLUE + "玩家拥有125生命和100护盾" + ANSI_COLOR_END,
+	ANSI_COLOR_BLUE + "装备依照高TTK进行平衡，反泰坦武器增加了反铁驭能力。辅助瞄准禁用" + ANSI_COLOR_END,
+	ANSI_COLOR_ORANGE + "血量归零后不会立即死亡而是会倒地等待救助。期间按住开火使用击倒护盾，在倒地玩家的背后按下E键进行处决" + ANSI_COLOR_END,
     ANSI_COLOR_ORANGE + "击杀敌人或助攻以获取护盾电池，可回满护盾。处决击杀和救助队友也可恢复最大80护盾" + ANSI_COLOR_END,
 
     ANSI_COLOR_RED + "请尊重其他玩家，勿卖弱、嘲讽等" + ANSI_COLOR_END,
@@ -30,33 +31,40 @@ global function Bleedout_SetHealthRegenRate
 
 const asset BLEEDOUT_EXECUTION_HITBOX_MODEL = $"models/weapons/bullets/mgl_grenade.mdl"
 
-// modified settings!
+// downed effects
+const asset FLESH_PINKMIST_FX = $"death_pinkmist_LG_nochunk" // was death_pinkmist_LG_nochunk
+const asset MECHNAICAL_PINKMIST_FX = $"xo_damage_exp_1" // was xo_damage_exp_2, current one has chunks
+
+// modifiable settings!
 global function Bleedout_EnableExecutingBleedingPlayer
 global function Bleedout_SetProtectionDuration
 global function Bleedout_SetIncapShieldHealth
 global function Bleedout_SetIncapShieldInvulnerable
 
-const float BLEEDOUT_PROTECTION_DURATION = 1.05
-const int BLEEDOUT_INCAP_SHIELD_MAX_HEALTH = 350
+const float BLEEDOUT_PROTECTION_DURATION = 1.05 // default value
+const int BLEEDOUT_INCAP_SHIELD_MAX_HEALTH = 350 // default value
 
+/* // unused
 struct IncapShieldStruct
 {
 	entity vortexSphere
 	entity shieldWallFX1P
 }
+*/
 
 // fake apex loadouts
-const bool BLEEDOUT_MODE_ENABLE_SECOND_LOADOUT = false
-// passives
+const bool BLEEDOUT_MODE_ENABLE_SECOND_LOADOUT = false // default value
+// passives, unfinished
 const bool BLEEDOUT_MODE_ENABLE_PASSIVES = false
 
-const float BLEEDOUT_MODE_SHIELD_BATTERY_USETIME = 2.1 // remember try to avoid sound issue
+const float BLEEDOUT_MODE_SHIELD_BATTERY_USETIME = 2.5 // remember try to avoid sound issue( using sound lasts about 3.0s )
 const float BLEEDOUT_MODE_AMPED_SHIELD_BATTERY_USETIME = 7.0
 const int BLEEDOUT_MODE_SHIELD_BATTERY_REGEN_AMOUNT = 100
 const int BLEEDOUT_MODE_REVIVING_FRIENDLY_SHIELD_REWARD = 80
 const int BLEEDOUT_MODE_EXECUTION_SHIELD_REWARD = 80
 const int BLEEDOUT_MODE_AMPED_SHIELD_BATTERY_REGEN_AMOUNT = 300
 
+// health settings
 const int BLEEDOUT_MODE_HEALTH = 125
 const int BLEEDOUT_MODE_DOWNED_HEALTH = 100
 const int BLEEDOUT_MODE_SHIELD_HEALTH = 100
@@ -71,7 +79,7 @@ const float BLEEDOUT_MODE_KNOCKDOWN_OWNED_VALUE = 0.0
 const float BLEEDOUT_MODE_DEATH_EARNED_VALUE = 0.0 // death will clean up earned value
 const float BLEEDOUT_MODE_DEATH_OWNED_VALUE = 0.3 // killed by a player will give you some earnmeter
 
-// banlance 
+// balance, hardcoded for now
 const array<int> BLEEDOUT_DOT_DAMAGE_TYPES =
 [
 	eDamageSourceId.mp_weapon_thermite_grenade,
@@ -80,6 +88,12 @@ const array<int> BLEEDOUT_DOT_DAMAGE_TYPES =
 ]
 const float BLEEDOUT_DOWNED_DOT_DAMAGE_SCALE = 0.3 // scale dot damage for downed players, so they can try to escape
 
+const array<int> BLEEDOUT_TRAP_DAMAGE_TYPES =
+[
+	eDamageSourceId.mp_weapon_satchel,
+	eDamageSourceId.mp_weapon_proximity_mine, // modded weapon
+]
+const float BLEEDOUT_DOWNED_TRAP_DAMAGE_SCALE = 0.7 // scale trap damage for downed players, as they mostly can't escape from traps
 // things below should be in playlistvar
 /*
 riff_player_bleedout 1
@@ -105,20 +119,40 @@ const bool GAMEMODE_DEATH_ON_TEAM_BLEEDOUT = false
 
 struct
 {
-    table< string, bool > useFakeApexLoadout // player's uid, don't know whether to use
-
-    // modified variable
+    // modifiable variables
+	// executions
 	bool executingBleedingEnabled = false
+
+	// health regen
 	float bleedoutHealthRegenRate = 4.0
 	float bleedoutHealthRegenDelay = 4.0
+
+	// damage protection
 	float protectionDuration = BLEEDOUT_PROTECTION_DURATION
-	//table<entity, string> playerSavedTitle
-	//table<entity, int> incapShieldHealthTable // abandoned
+
+	// incap shield
 	int incapShieldMaxHealth = BLEEDOUT_INCAP_SHIELD_MAX_HEALTH
+	bool invulnerableIncapShield
+
+	// in-file variables
+	// damage protection
+	table<entity, float> playerBleedoutStartTime
+
+	// apex loadout
+	table< string, bool > useFakeApexLoadout // player's uid so they can retain loadout after re-join
+
+	// title
+	//table<entity, string> playerSavedTitle
+
+	// incap shield
+	//table<entity, int> incapShieldHealthTable // abandoned
 	//table<entity, IncapShieldStruct> playerIncapShieldTable // no need to use 1p things
 	table<entity, entity> playerIncapShieldTable
-	bool invulnerableIncapShield
-	table<entity, entity> bleedoutFakePlayers // can't handle rn
+	
+	// fake player models
+	table<entity, entity> bleedoutFakePlayers // no support for now
+
+	// score event
 	table< entity, array<entity> > playerBeingKnockDownBy // handle knockdown score event
 } file
 
@@ -127,8 +161,8 @@ void function Modded_Gamemode_Bleedout_Init()
 	//SetServerVar( "ammoLimit", true )
 	//SetServerVar( "playerBleedout", true )
 
-    PrecacheParticleSystem( $"death_pinkmist_LG_nochunk" ) // was death_pinkmist_nochunk
-	PrecacheParticleSystem( $"xo_damage_exp_1" ) // was xo_damage_exp_2, current one has chunks
+    PrecacheParticleSystem( FLESH_PINKMIST_FX )
+	PrecacheParticleSystem( MECHNAICAL_PINKMIST_FX )
 
 	// modified function in _utility_shared.nut, disable bleedout killcam
 	AddReplayDisabledDamageSourceId( eDamageSourceId.bleedout )
@@ -154,7 +188,7 @@ void function Modded_Gamemode_Bleedout_Init()
     //SetShouldAlsoFuckOffPOV( false ) // for something
     SetShouldFUCKOFFCLOAK( true ) // fuck them
 	
-    SetPlayerDeathsHidden( true ) // no sounds for deaths, and won't count deaths by default
+    //SetPlayerDeathsHidden( true ) // no sounds for deaths, and won't count deaths by default
     SetWeaponDropsEnabled( false ) // bleedout uses USE so much, don't let players drop weapons
 	// modified function in _score.nut, override "KillPilot" with "EliminatePilot"
 	ScoreEvent_SetScoreEventNameOverride( "KillPilot", "EliminatePilot" )
@@ -171,7 +205,7 @@ void function Modded_Gamemode_Bleedout_Init()
     ClassicMP_SetCustomIntro( ClassicMP_ShorterDropshipIntro_Setup, DROPSHIP_INTRO_LENGTH_SHORTER )
 
     Bleedout_AddCallback_OnPlayerStartBleedout( BleedoutMode_OnPlayerDowned )
-    Bleedout_AddCallback_OnPlayerGiveFirstAid( BleedoutMode_OnPlayerRevived )
+    Bleedout_AddCallback_OnPlayerBeenRevived( BleedoutMode_OnPlayerRevived )
 
     //AddCallback_GameStateEnter( eGameState.Playing, SetBleedoutState )
     AddCallback_OnClientConnected( OnClientConnected )
@@ -182,7 +216,10 @@ void function Modded_Gamemode_Bleedout_Init()
     AddCallback_OnPlayerKilled( OnPlayerKilled )
     AddCallback_OnTouchHealthKit( "item_titan_battery", OnTouchBatteryPack )
 
-	// banlance handler
+	// damage protection
+	AddDamageCallback( "player", OnPlayerFinalDamaged )
+
+	// balance handler
 	AddDamageCallback( "player", OnPlayerDamaged )
 
     // more score added
@@ -226,15 +263,22 @@ void function OnClientConnected( entity player )
 	foreach ( string notification in CONNECTING_NOTIFICATIONS )
 	    Chat_ServerPrivateMessage( player, notification, false, false )
 
+	// damage protection
+	file.playerBleedoutStartTime[ player ] <- -1
+
+	// apex loadout
     file.useFakeApexLoadout[ player.GetUID() ] <- false
     if( BLEEDOUT_MODE_ENABLE_SECOND_LOADOUT )
         AddButtonPressedPlayerInputCallback( player, IN_MELEE, SwitchLoadoutType )
+
+	// shield notifications
     //AddButtonPressedPlayerInputCallback( player, IN_USE, GetShieldLeft )
     //AddButtonPressedPlayerInputCallback( player, IN_USE_AND_RELOAD, GetShieldLeft )
 
-    // following are base mode status
-    //file.lastDamageInfo[ player ] <- null // no idea now
-	//file.playerSavedTitle[ player ] <- ""
+    // title
+	//file.playerSavedTitle[ player ] <- "" // no idea now
+
+	// incap shield
 	//file.incapShieldHealthTable[ player ] <- file.incapShieldMaxHealth
 	file.playerIncapShieldTable[ player ] <- null
 	/*
@@ -244,8 +288,26 @@ void function OnClientConnected( entity player )
 	file.playerIncapShieldTable[ player ] <- emptyStruct
 	*/
 
+	// fake player model
 	file.bleedoutFakePlayers[ player ] <- null
+
+	// score event
 	file.playerBeingKnockDownBy[ player ] <- []
+
+	// disable aimassist life long
+	thread DisablePlayerBeingAimAssisted( player )
+}
+
+void function DisablePlayerBeingAimAssisted( entity player )
+{
+	player.EndSignal( "OnDestroy" )
+
+	while ( true )
+	{
+		if ( IsAlive( player ) )
+			player.SetAimAssistAllowed( false )
+		WaitFrame()
+	}
 }
 
 void function OnClientDisconnected( entity player )
@@ -259,6 +321,18 @@ void function OnClientDisconnected( entity player )
 
 void function OnPlayerClassChanged( entity player )
 {
+	// health&shield update
+	if ( IsAlive( player ) ) // can't set health for a no-alive entity
+	{
+		if ( !player.IsTitan() && player.GetPlayerSettings() != "spectator" )
+		{
+			player.SetMaxHealth( BLEEDOUT_MODE_HEALTH )
+			player.SetHealth( BLEEDOUT_MODE_HEALTH )
+			player.SetShieldHealthMax( BLEEDOUT_MODE_SHIELD_HEALTH )
+			player.SetShieldHealth( BLEEDOUT_MODE_SHIELD_HEALTH )
+		}
+	}
+
     //print( "Running OnPlayerClassChanged()" )
     thread Bleedout_HealthRegenThink( player )
 }
@@ -336,13 +410,9 @@ void function OnPlayerGetsPilotLoadout( entity player, PilotLoadoutDef p )
 	}
 
     SyncedMelee_Disable( player )
-    player.SetMaxHealth( BLEEDOUT_MODE_HEALTH )
-    player.SetHealth( BLEEDOUT_MODE_HEALTH )
-    player.SetShieldHealthMax( BLEEDOUT_MODE_SHIELD_HEALTH )
-    player.SetShieldHealth( BLEEDOUT_MODE_SHIELD_HEALTH )
 
 	player.GiveExtraWeaponMod( "bleedout_balance" )
-	//player.GiveExtraWeaponMod( "pushback_melee" ) // removed for now, using normal emptyhanded melee
+	//player.GiveExtraWeaponMod( "pushback_melee" ) // removed for now, handled below
 
     if( file.useFakeApexLoadout[player.GetUID()] ) // apex loadout players
     {
@@ -372,14 +442,19 @@ void function OnPlayerGetsPilotLoadout( entity player, PilotLoadoutDef p )
 			}
 			
 		}
+
 		// better melee weapon
 		//thread DelayedCheckMelee( player ) // removed for now, using normal emptyhanded melee
+		player.TakeOffhandWeapon( OFFHAND_MELEE )
 		entity meleeWeapon = player.GetOffhandWeapon( OFFHAND_MELEE )
-		if ( IsValid( meleeWeapon ) )
+		if ( !IsValid( meleeWeapon ) )
 		{
-		    meleeWeapon.AddMod( "pushback_melee" )
-			meleeWeapon.AddMod( "fake_human_melee" )
-			meleeWeapon.AddMod( "jetpack_fx_melee" ) // cool stuffs
+			// add a fake melee model for player. they have faster animation startup but whatever
+			// note that thse fake melee mods cant be given by weapon.AddMod()
+			string fakeMeleeMod = CoinFlip() ? "fake_melee_kunai" : "fake_melee_sword"
+			array<string> mods = [ "dash_melee", "pushback_melee", "jetpack_fx_melee", fakeMeleeMod ]
+			// "fake_human_melee" // remove for now since we're using fake melee weapons
+			player.GiveOffhandWeapon( "melee_pilot_emptyhanded", OFFHAND_MELEE, mods )
 		}
 	}
 }
@@ -453,6 +528,37 @@ void function OnPlayerKilled( entity victim, entity attacker, var damageInfo )
 		PlayerEarnMeter_AddEarnedAndOwned( victim, BLEEDOUT_MODE_DEATH_EARNED_VALUE, BLEEDOUT_MODE_DEATH_OWNED_VALUE )
 	}
 	file.playerBeingKnockDownBy[ victim ].clear() // clear knocked down saver
+
+	// we never count player's deaths
+	thread DelayedReducePlayerDeathCount( victim )
+	
+}
+
+void function DelayedReducePlayerDeathCount( entity player )
+{
+	player.EndSignal( "OnDestroy" )
+	WaitEndFrame() // wait for other death callbacks setup and death count being added
+
+	if ( player.GetPlayerGameStat( PGS_DEATHS ) > 0 )
+		player.AddToPlayerGameStat( PGS_DEATHS, -1 )
+}
+
+void function OnPlayerFinalDamaged( entity victim, var damageInfo )
+{
+	if ( Bleedout_IsPlayerBleeding( victim ) ) // victim is bleeding!
+	{
+		// damage protection
+		// don't block bleedout knockdown shot( we need to leave knockbacks for player )
+		// well, no need to add complicated checks, knockdown shots won't be blocked here
+		float protectionEndTime = file.playerBleedoutStartTime[ victim ] + file.protectionDuration
+		if ( Time() < protectionEndTime )
+		{
+			// debug
+			//print( "Damage blocked by bleedout protection" )
+			
+			DamageInfo_SetDamage( damageInfo, 0 )
+		}
+	}
 }
 
 void function OnPlayerDamaged( entity victim, var damageInfo )
@@ -463,6 +569,8 @@ void function OnPlayerDamaged( entity victim, var damageInfo )
 		int damageSourceID = DamageInfo_GetDamageSourceIdentifier( damageInfo )
 		if ( BLEEDOUT_DOT_DAMAGE_TYPES.contains( damageSourceID ) )
 			DamageInfo_ScaleDamage( damageInfo, BLEEDOUT_DOWNED_DOT_DAMAGE_SCALE )
+		else if ( BLEEDOUT_TRAP_DAMAGE_TYPES.contains( damageSourceID ) )
+			DamageInfo_ScaleDamage( damageInfo, BLEEDOUT_DOWNED_TRAP_DAMAGE_SCALE )
 	}
 }
 
@@ -540,16 +648,16 @@ void function BleedoutMode_OnPlayerDowned( entity player, entity attacker, var d
 		return
 	}
 
-    player.SetMaxHealth( BLEEDOUT_MODE_DOWNED_HEALTH * 5 )
-    player.SetHealth( BLEEDOUT_MODE_DOWNED_HEALTH )
+	file.playerBleedoutStartTime[ player ] = Time()
+    thread UpdateBleedoutPlayerHealth( player )
 
     Bleedout_PlayerDownedSound( player, attacker )
 	Bleedout_PlayerDownedEffect( player, damageInfo )
 	Bleedout_PlayerDownedObit( player, attacker, damageInfo ) // now only shows to attacker!
 
-    EmitSoundOnEntityToTeam( player, "UI_Spawn_FriendlyPilot", player.GetTeam() )
+    EmitSoundOnEntityToTeamExceptPlayer( player, "UI_Spawn_FriendlyPilot", player.GetTeam(), player )
 
-    thread Bleedout_DeathProtection( player )
+    //thread Bleedout_DeathProtection( player )
 	thread Bleedout_PlayerMovementLimiter( player ) // using this now, also prevents player from slide hopping
 	/*
 	string playerTitle = player.GetTitle()
@@ -562,7 +670,7 @@ void function BleedoutMode_OnPlayerDowned( entity player, entity attacker, var d
 	// done using Bleedout_PlayerMovementLimiter()
 	//Bleedout_DiableWallrunAndDoubleJump( player ) 
 
-	thread Bleedout_ScreenFadeThink( player )
+	thread Bleedout_VisualEffectThink( player )
 	thread Bleedout_EnemySpottingHighlight( player )
 	if( Bleedout_GetForceWeaponHolster() ) // if player is able to use a weapon, we don't enable incap shields
 	{
@@ -580,8 +688,25 @@ void function BleedoutMode_OnPlayerDowned( entity player, entity attacker, var d
 	}
 }
 
+void function UpdateBleedoutPlayerHealth( entity player )
+{
+	player.EndSignal( "OnDeath" )
+	player.EndSignal( "OnDestroy" )
+	
+	WaitEndFrame() // wait for the damage going through
+
+	if ( Bleedout_IsPlayerBleeding( player ) )
+	{
+		player.SetMaxHealth( BLEEDOUT_MODE_DOWNED_HEALTH * 5 )
+		player.SetHealth( BLEEDOUT_MODE_DOWNED_HEALTH )
+	}
+}
+
 bool function PlayerCanEarnFromKnockdown( entity attacker, entity victim )
 {
+	if ( attacker == victim ) // self damage
+		return false
+	
 	if ( file.playerBeingKnockDownBy[ victim ].contains( attacker ) ) // only gain once for each knockdowner!
 		return false
 
@@ -596,19 +721,22 @@ void function BleedoutMode_OnPlayerRevived( entity playerToRes, entity playerHea
 	// done using Bleedout_PlayerMovementLimiter()
 	//Bleedout_EnableWallrunAndDoubleJump( playerToRes )
 	//player.Signal( "StopHealthRegenThink" )
+
+	file.playerBleedoutStartTime[ playerToRes ] = -1
     playerToRes.SetMaxHealth( BLEEDOUT_MODE_HEALTH )
     playerToRes.p.lastDamageTime = Time()
+
     thread Bleedout_PlayerForceStand( playerToRes ) // so players won't have to manually cancel their crouch, but might be annoying for reviving behind low covers
 
     // do a reward for playerHealer
-    if( playerHealer.GetShieldHealth() == playerHealer.GetShieldHealthMax() ) // shield full!
-        return
-    if( playerHealer == playerToRes ) // selfRes
-        return
-    entity shieldFXHandle = StartParticleEffectOnEntity_ReturnEntity( playerHealer, GetParticleSystemIndex( $"P_xo_armor_body_CP" ), FX_PATTACH_POINT_FOLLOW, playerHealer.LookupAttachment( "CHESTFOCUS" ) )
-
-    int shieldRestored = PlayerShieldReward( playerHealer, BLEEDOUT_MODE_REVIVING_FRIENDLY_SHIELD_REWARD )
-    SendHudMessage( playerHealer, "復活一名隊友, 已回復" + string(shieldRestored) + "點護盾! ", -1, -0.3, 0, 255, 255, 255, 0, 2, 0 )
+	if( playerHealer != playerToRes ) // selfRes
+	{
+    	if( playerHealer.GetShieldHealth() < playerHealer.GetShieldHealthMax() )
+		{
+			int shieldRestored = PlayerShieldReward( playerHealer, BLEEDOUT_MODE_REVIVING_FRIENDLY_SHIELD_REWARD )
+			SendHudMessage( playerHealer, "復活一名隊友, 已回復" + string(shieldRestored) + "點護盾! ", -1, -0.3, 0, 255, 255, 255, 0, 2, 0 )
+		}
+	}
 }
 
 void function SwitchLoadoutType( entity player )
@@ -913,7 +1041,7 @@ void function Bleedout_PlayerDownedEffect( entity player, var damageInfo )
 	if( player.IsMechanical() )
 	{
 		// don't show mechanic downed effect to owner themselves, it's annoying!
-		int particleIndex = GetParticleSystemIndex( $"xo_damage_exp_1" ) // was xo_damage_exp_2, current one has chunks
+		int particleIndex = GetParticleSystemIndex( MECHNAICAL_PINKMIST_FX )
 		entity fx = StartParticleEffectOnEntity_ReturnEntity( player, particleIndex, FX_PATTACH_POINT_FOLLOW, attachmentIndex )
 		SetTeam( fx, player.GetTeam() )
 		fx.SetOwner( player )
@@ -927,7 +1055,7 @@ void function Bleedout_PlayerDownedEffect( entity player, var damageInfo )
 	}
 	else
 	{
-		int particleIndex = GetParticleSystemIndex( $"death_pinkmist_LG_nochunk" )
+		int particleIndex = GetParticleSystemIndex( FLESH_PINKMIST_FX )
 		entity fx = StartParticleEffectOnEntity_ReturnEntity( player, particleIndex, FX_PATTACH_POINT_FOLLOW, attachmentIndex )
 		fx.SetOwner( player )
 		fx.kv.VisibilityFlags = ENTITY_VISIBLE_TO_FRIENDLY | ENTITY_VISIBLE_TO_ENEMY
@@ -984,14 +1112,17 @@ void function Bleedout_PlayerDownedObit( entity ent, entity attacker, var damage
 	{
 		if( attacker.IsPlayer() && ent.IsPlayer() )
 		{
+			// serverside-RUI is really fucked up with updating per tick...
 			//NSSendPopUpMessageToPlayer( attacker, "擊倒 " + ent.GetPlayerName() )
 			//NSSendPopUpMessageToPlayer( ent, "被 " + attacker.GetPlayerName() + " 擊倒" )
-			SendHudMessage( attacker, "擊倒" + ent.GetPlayerName(), -1, -0.3, 0, 255, 255, 255, 0.2, 1.0, 0.5 )
-			SendHudMessage( ent, "被 " + attacker.GetPlayerName() + " 擊倒", -1, -0.3, 255, 255, 0, 255, 0.2, 1.5, 0.5 )
+			// temp remove these
+			//SendHudMessage( attacker, "擊倒" + ent.GetPlayerName(), -1, -0.3, 0, 255, 255, 255, 0.2, 1.0, 0.5 )
+			//SendHudMessage( ent, "被 " + attacker.GetPlayerName() + " 擊倒", -1, -0.3, 255, 255, 0, 255, 0.2, 1.5, 0.5 )
 		}
 	}
 }
 
+/* // reworked. now handled by OnPlayerFinalDamaged()
 void function Bleedout_DeathProtection( entity player )
 {
 	// really should use a better check!
@@ -1041,7 +1172,10 @@ void function Bleedout_DeathProtection( entity player )
 		WaitFrame()
 	}
 }
+*/
 
+// reworked. now handled by OnPlayerFinalDamaged()
+/*
 void function OnRecentDownedPlayerDamaged( entity player, var damageInfo )
 {
 	if ( IsInstantDeath( damageInfo ) || DamageInfo_GetForceKill( damageInfo ) )
@@ -1058,6 +1192,7 @@ void function OnRecentDownedPlayerPostDamage( entity player, var damageInfo )
 	else // not a kill shot
 		DamageInfo_SetDamage( damageInfo, 0 ) // protect the player
 }
+*/
 
 void function Bleedout_PlayerMovementLimiter( entity player )
 {
@@ -1081,10 +1216,10 @@ void function Bleedout_PlayerMovementLimiter( entity player )
 
 
 	// delay it so player can still slide off when in protection? better use after able to knockback players on killshot
-	float slideDiableTime = Time() + file.protectionDuration
+	float slideDisableTime = Time() + file.protectionDuration
 	while( true )
 	{
-		if ( Time() >= slideDiableTime )
+		if ( Time() >= slideDisableTime )
 		{
 			// using custom utility!
 			//player.SetGroundFrictionScale( 9999.0 )
@@ -1194,8 +1329,9 @@ void function Bleedout_EnemySpottingHighlight( entity player )
 
 	while( true )
 	{
-		Highlight_SetEnemyHighlight( player, "sp_enemy_pilot" )
-		player.Highlight_SetParam( 2, 0, < 2,0,0 > ) // light right
+		// outline that can show through viewmodel
+		Highlight_SetEnemyHighlight( player, "sp_enemy_pilot" ) // default is orange
+		//player.Highlight_SetParam( 2, 0, < 2,0,0 > ) // red
 		WaitFrame()
 	}
 }
@@ -1305,14 +1441,23 @@ void function ExecuteHitboxOwner_Threaded( entity hitbox, entity player )
 		return
 	}
 
+	// checks from AttemptHumanMeleeExecution()
+	if ( !IsAlive( player ) )
+		return
+
+	if ( player.IsPhaseShifted() )
+		return
+
+	// action validations check( PlayerTriesSyncedMelee() can freeze player if no action can be found )
 	SyncedMeleeChooser ornull actions = GetSyncedMeleeChooserForPlayerVsTarget( player, owner )
-	if( actions == null )
+	if ( actions == null )
 		return
 	expect SyncedMeleeChooser( actions )
 	SyncedMelee ornull action = FindBestSyncedMelee( player, owner, actions )
-	if( action == null )
+	if ( action == null )
 		return
-	expect SyncedMelee( action )
+
+	// all checks passed!
 
 	// start execution
 	// add signals that cancels executions
@@ -1320,7 +1465,7 @@ void function ExecuteHitboxOwner_Threaded( entity hitbox, entity player )
 	player.EndSignal( "OnDeath" )
 	player.EndSignal( "BleedOut_OnStartDying" )
 	owner.EndSignal( "OnDestroy" )
-	owner.EndSignal( "OnDeath" )
+	//owner.EndSignal( "OnDeath" ) // no need to add owner's "OnDeath" EndSignal, otherwise PlayerTriesSyncedMelee() will be ended unexpectly
 
 	OnThreadEnd(
 		function(): ( owner, hitbox )
@@ -1329,39 +1474,14 @@ void function ExecuteHitboxOwner_Threaded( entity hitbox, entity player )
 			{
 				if( !IsAlive( owner ) ) // owner died
 					hitbox.Destroy()
-				else
-				{
+				else // execution being interrupted
 					hitbox.SetUsableByGroup( "enemies pilot" )
-				}
 			}
 		}
 	)
 
-	thread Bleedout_PlayerSyncedMeleeEffect( player ) // screen effect
-	thread Bleedout_PlayerSyncedMeleeEffect( owner )
-	waitthread MeleeThread_PilotVsEnemy( action, player, owner )
-}
-
-void function Bleedout_PlayerSyncedMeleeEffect( entity player )
-{
-    player.EndSignal( "OnDeath" )
-    player.EndSignal( "OnDestroy" )
-
-	OnThreadEnd(
-		function() : ( player )
-		{
-			if ( IsValid( player ) )
-			{
-				RemoveCinematicFlag( player, CE_FLAG_EXECUTION )
-                RemoveCinematicFlag( player, CE_FLAG_HIDE_MAIN_HUD )
-			}
-		}
-	)
-
-    AddCinematicFlag( player, CE_FLAG_EXECUTION )
-    AddCinematicFlag( player, CE_FLAG_HIDE_MAIN_HUD )
-
-    WaittillAnimDone( player )
+	player.Anim_StopGesture( 0 )
+	PlayerTriesSyncedMelee( player, owner )
 }
 
 void function Bleedout_IncapShieldThink( entity player )
@@ -1401,7 +1521,7 @@ void function Bleedout_IncapShieldThink( entity player )
 	//HideIncapShieldVortexSphere( vortexSphere ) // later we enable it
 	//vortexSphere.EndSignal( "OnDestroy" )
 	
-	wait file.protectionDuration *0.5
+	wait file.protectionDuration * 0.5
 
 	entity vortexSphere = CreateIncapShieldForBleedingPlayer( player )
 	vortexSphere.EndSignal( "OnDestroy" )
@@ -1409,9 +1529,12 @@ void function Bleedout_IncapShieldThink( entity player )
 	float lastDryFireTime = 0
 	bool vortexShown = true // default is shown
 	bool hasStatusEffect = true
+	bool firstLoop = true
 	while( true )
 	{
-		WaitFrame()
+		if ( !firstLoop ) // first loop should never wait, so player can hide their incap shield immediately
+			WaitFrame()
+		firstLoop = false
 
 		// not holding attack or be in special state
 		if( IsInValidIncapShieldState( player ) && player.IsInputCommandHeld( IN_ATTACK ) ) 
@@ -1425,7 +1548,7 @@ void function Bleedout_IncapShieldThink( entity player )
 
 			if( !vortexShown )
 			{
-				//EmitSoundOnEntity( vortexSphere, "ShieldWall_Loop" )
+				EmitSoundOnEntity( vortexSphere, "ShieldWall_Loop" )
 				StopSoundOnEntity( player, "Hardcover_Shield_End_3P" )
 				EmitSoundOnEntity( vortexSphere, "Hardcover_Shield_Start_3P" )
 				HACK_ShowIncapShieldVortexSphere( vortexSphere, player ) // hacking function
@@ -1440,7 +1563,7 @@ void function Bleedout_IncapShieldThink( entity player )
 		else if( vortexShown )
 		{
 			//print( "Stopping Incap Shield" )
-			//StopSoundOnEntity( vortexSphere, "ShieldWall_Loop" )
+			StopSoundOnEntity( vortexSphere, "ShieldWall_Loop" )
 			StopSoundOnEntity( vortexSphere, "Hardcover_Shield_Start_3P" )
 			EmitSoundOnEntity( player, "Hardcover_Shield_End_3P" ) // do sound on player since vortex has been hide
 			//StopIncapShieldWallFX( vortexSphere ) // no need for now!
@@ -1787,7 +1910,8 @@ void function HACK_TempHideIncapShieldVortexSphere( entity vortexSphere )
 }
 
 
-// WARNS: this is unfinished! can't handle it's angles, don't know why
+// WARNING: this is unfinished! can't handle it's angles, don't know why
+/*
 void function IncapShieldMoverThink( entity owner, entity vortexSphere )
 {
 	// signals goes here
@@ -1851,6 +1975,7 @@ vector function ClampPitch( vector angles )
 		angles.x = -30
 	return angles
 }
+*/
 
 // not solid can't handle vortexSphere for some reason
 /*
@@ -2047,28 +2172,48 @@ void function TrackPlayerIncapShieldHealth( entity vortexSphere, entity player )
 }
 */
 
-void function Bleedout_ScreenFadeThink( entity player )
+void function Bleedout_VisualEffectThink( entity player )
 {
 	player.EndSignal( "OnDeath" )
 	player.EndSignal( "OnDestroy" )
 	player.EndSignal( "BleedOut_StopBleeding" )
 	player.EndSignal( "BleedOut_OnRevive" )
 
+	array<int> statusEffects = []
+
 	OnThreadEnd(
-		function(): ( player )
+		function(): ( player, statusEffects )
 		{
 			if( IsValid( player ) )
 			{
 				ScreenFade( player, 0, 0, 0, 125, 0.1, 0.1, FFADE_IN | FFADE_PURGE )
+				foreach ( int effect in statusEffects )
+					StatusEffect_Stop( player, effect )
+				// doesn't seem work
+				//player.nv.reviveBleedingOut = -1.0 //-1 means off
+				//SetEntityVar( player, "reviveBleedingOut", -1 )
 			}
 		}
 	)
 
 	float bleedingTime = Bleedout_GetBleedoutTime()
+	float screenFadeStartDelay = bleedingTime * 0.5
+	// bleedout DOF takes 80% of actual bleeding time to fully apply
+	float dofApplyDuration = bleedingTime * 0.8
+	float dofStartDelay = bleedingTime - dofApplyDuration
 
-	wait bleedingTime * 0.5
+	// text "Bleeding out"
+	float endTime = Time() + bleedingTime
+	// doesn't seem work
+	//player.nv.reviveBleedingOut = endTime
+	//SetEntityVar( player, "reviveBleedingOut", endTime )
 	
+	wait dofStartDelay
+	statusEffects.append( StatusEffect_AddEndless( player, eStatusEffect.bleedoutDOF, 1.0 ) )
+
+	wait ( dofStartDelay > 0 ? screenFadeStartDelay - dofStartDelay : screenFadeStartDelay )
 	ScreenFade( player, 0, 0, 0, 225, bleedingTime * 0.5, 999, FFADE_OUT | FFADE_PURGE )
+
 	WaitForever()
 }
 

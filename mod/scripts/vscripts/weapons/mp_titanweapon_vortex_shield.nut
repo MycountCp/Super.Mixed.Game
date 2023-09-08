@@ -52,7 +52,7 @@ function VortexShieldPrecache()
 void function OnWeaponOwnerChanged_titanweapon_vortex_shield( entity weapon, WeaponOwnerChangedParams changeParams )
 {
 	// modded weapon
-	if( weapon.HasMod( "shock_shield" ) )
+	if( weapon.HasMod( "archon_shock_shield" ) )
 		return OnWeaponOwnerChanged_titanweapon_shock_shield( weapon, changeParams )
 	if ( weapon.HasMod( "vortex_blocker" ) )
 		return OnWeaponOwnerChanged_titanability_vortex_blocker( weapon, changeParams )
@@ -87,7 +87,7 @@ void function OnWeaponOwnerChanged_titanweapon_vortex_shield( entity weapon, Wea
 void function OnWeaponActivate_titanweapon_vortex_shield( entity weapon )
 {
 	// modded weapon
-	if( weapon.HasMod( "shock_shield" ) )
+	if( weapon.HasMod( "archon_shock_shield" ) )
 		return OnWeaponActivate_titanweapon_shock_shield( weapon )
 
 	// vanilla behavior
@@ -109,7 +109,7 @@ void function OnWeaponActivate_titanweapon_vortex_shield( entity weapon )
 void function OnWeaponDeactivate_titanweapon_vortex_shield( entity weapon )
 {
 	// modded weapon
-	if( weapon.HasMod( "shock_shield" ) )
+	if( weapon.HasMod( "archon_shock_shield" ) )
 		return OnWeaponDeactivate_titanweapon_shock_shield( weapon )
 
 	// vanilla behavior
@@ -122,7 +122,7 @@ void function OnWeaponDeactivate_titanweapon_vortex_shield( entity weapon )
 void function OnWeaponCustomActivityStart_titanweapon_vortex_shield( entity weapon )
 {
 	// modded weapon
-	if( weapon.HasMod( "shock_shield" ) )
+	if( weapon.HasMod( "archon_shock_shield" ) )
 		return OnWeaponCustomActivityStart_titanweapon_shock_shield( weapon )
 
 	// vanilla behavior
@@ -191,6 +191,7 @@ function AmpedVortexRefireThink( entity weapon )
 
 		if ( IsValid( weaponOwner )	)
 		{
+			// unpredicted refire...? how's client first person look like
 			ShotgunBlast( weapon, weaponOwner.EyePosition(), weaponOwner.GetPlayerOrNPCViewVector(), expect int( weapon.s.ampedBulletCount ), damageTypes.shotgun | DF_VORTEX_REFIRE )
 			weapon.s.ampedBulletCount = 0
 		}
@@ -244,7 +245,7 @@ function EndVortex( entity weapon )
 bool function OnWeaponVortexHitBullet_titanweapon_vortex_shield( entity weapon, entity vortexSphere, var damageInfo )
 {
 	// modded weapon
-	if( weapon.HasMod( "shock_shield" ) )
+	if( weapon.HasMod( "archon_shock_shield" ) )
 		return OnWeaponVortexHitBullet_titanweapon_shock_shield( weapon, vortexSphere, damageInfo )
 	if ( weapon.HasMod( "vortex_blocker" ) )
 		return OnWeaponVortexHitBullet_titanability_vortex_blocker( weapon, vortexSphere, damageInfo )
@@ -268,6 +269,21 @@ bool function OnWeaponVortexHitBullet_titanweapon_vortex_shield( entity weapon, 
 		string attackerWeaponName	= attackerWeapon.GetWeaponClassName()
 		int damageType				= DamageInfo_GetCustomDamageType( damageInfo )
 
+		// fix ttf2 vanilla behavior: burn mod vortex shield
+		// never try to catch a burn mod vortex's refiring bullets if we're using burn mod vortex shield
+		// otherwise it may cause infinite refire and crash the server
+		if ( weapon.HasMod( "burn_mod_titan_vortex_shield" ) && attackerWeapon.HasMod( "burn_mod_titan_vortex_shield" ) )
+		{
+			// build impact data
+			local impactData = Vortex_CreateImpactEventData( weapon, attacker, origin, damageSourceID, attackerWeaponName, "hitscan" )
+			// do vortex drain
+			VortexDrainedByImpact( weapon, attackerWeapon, null, null )
+			// generic shield ping FX, modified to globalize this function in _vortex.nut
+			Vortex_SpawnShieldPingFX( weapon, impactData )
+			return true
+		}
+		//
+
 		return TryVortexAbsorb( vortexSphere, attacker, origin, damageSourceID, attackerWeapon, attackerWeaponName, "hitscan", null, damageType, weapon.HasMod( "burn_mod_titan_vortex_shield" ) )
 	#endif
 }
@@ -275,7 +291,7 @@ bool function OnWeaponVortexHitBullet_titanweapon_vortex_shield( entity weapon, 
 bool function OnWeaponVortexHitProjectile_titanweapon_vortex_shield( entity weapon, entity vortexSphere, entity attacker, entity projectile, vector contactPos )
 {
 	// modded weapon
-	if( weapon.HasMod( "shock_shield" ) )
+	if( weapon.HasMod( "archon_shock_shield" ) )
 		return OnWeaponVortexHitProjectile_titanweapon_shock_shield( weapon, vortexSphere, attacker, projectile, contactPos )
 	if ( weapon.HasMod( "vortex_blocker" ) )
 		return OnWeaponVortexHitProjectile_titanability_vortex_blocker( weapon, vortexSphere, attacker, projectile, contactPos )
@@ -300,7 +316,7 @@ bool function OnWeaponVortexHitProjectile_titanweapon_vortex_shield( entity weap
 var function OnWeaponPrimaryAttack_titanweapon_vortex_shield( entity weapon, WeaponPrimaryAttackParams attackParams )
 {
 	// modded weapon
-	if( weapon.HasMod( "shock_shield" ) )
+	if( weapon.HasMod( "archon_shock_shield" ) )
 		return OnWeaponPrimaryAttack_titanweapon_shock_shield( weapon, attackParams )
 
 	// vanilla behavior
@@ -366,7 +382,7 @@ var function OnWeaponNpcPrimaryAttack_titanweapon_vortex_shield( entity weapon, 
 void function OnClientAnimEvent_titanweapon_vortex_shield( entity weapon, string name )
 {
 	// modded weapon
-	if( weapon.HasMod( "shock_shield" ) )
+	if( weapon.HasMod( "archon_shock_shield" ) )
 		return OnClientAnimEvent_titanweapon_shock_shield( weapon, name )
 
 	// vanilla behavior
@@ -401,7 +417,7 @@ void function OnClientAnimEvent_titanweapon_vortex_shield( entity weapon, string
 bool function OnWeaponChargeBegin_titanweapon_vortex_shield( entity weapon )
 {
 	// modded weapon
-	if( weapon.HasMod( "shock_shield" ) )
+	if( weapon.HasMod( "archon_shock_shield" ) )
 		return OnWeaponChargeBegin_titanweapon_shock_shield( weapon )
 	if ( weapon.HasMod( "vortex_blocker" ) )
 		return OnWeaponChargeBegin_titanability_vortex_blocker( weapon ) // this one won't overwrite default vortex
@@ -422,7 +438,7 @@ bool function OnWeaponChargeBegin_titanweapon_vortex_shield( entity weapon )
 void function OnWeaponChargeEnd_titanweapon_vortex_shield( entity weapon )
 {
 	// modded weapon
-	if( weapon.HasMod( "shock_shield" ) )
+	if( weapon.HasMod( "archon_shock_shield" ) )
 		return OnWeaponChargeEnd_titanweapon_shock_shield( weapon )
 	
 	// vanilla behavior
@@ -435,7 +451,7 @@ void function OnWeaponChargeEnd_titanweapon_vortex_shield( entity weapon )
 bool function OnWeaponAttemptOffhandSwitch_titanweapon_vortex_shield( entity weapon )
 {
 	// modded weapon
-	if( weapon.HasMod( "shock_shield" ) )
+	if( weapon.HasMod( "archon_shock_shield" ) )
 		return OnWeaponAttemptOffhandSwitch_titanweapon_shock_shield( weapon )
 
 	// vanilla behavior

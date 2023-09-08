@@ -36,9 +36,9 @@ const array<int> PLAYER_DAMAGE_PROTECTION_BLACKLIST_DAMAGEFLAGS =
 ]
 
 // npc damage settings!!!
-const float NPC_PILOT_DAMAGE_MULTIPLIER = 2.5
+const float NPC_PILOT_DAMAGE_MULTIPLIER = 2.0
 const float NPC_PROWLER_DAMAGE_MULTIPLIER = 0.3
-const float NPC_SUPER_SPECTRE_ROCKET_DAMAGE_MULTIPLIER = 0.4
+const float NPC_SUPER_SPECTRE_ROCKET_DAMAGE_MULTIPLIER = 0.5
 
 struct PlayerClassStruct
 {
@@ -93,25 +93,22 @@ void function BecomesGruntMode_Init()
 	//SetKillcamsEnabled( false ) // disable replay, no need since we've made a delayed replay system
 	RemoveReplayDisabledDamageSourceId( eDamageSourceId.human_execution ) // modified function in _utility_shared.nut, we have shorten executions so don't disable killcam
 	// npc executions
-	//MeleeSyncedNPC_EnableAll_Init() // npc executions for fun
+	MeleeSyncedNPC_EnableAll_Init() // npc executions for fun
+	/* // now we use specified executions for grunt players & npcs, supports spectres
 	MeleeSyncedNPC_AllowNPCTitanExecutions( true )
 	MeleeSyncedNPC_AllowNPCPilotExecutions( true )
-	MeleeSyncedNPC_AllowNPCGruntExecutions( true ) // spectres don't have neck snap attacker sequence, they'll try pilot executions, which is bad
+	MeleeSyncedNPC_AllowNPCGruntExecutions( true ) // spectres don't have ttf1 neck snap attacker sequence, they'll try pilot executions, which is bad
 	Melee_SetPlayerClassicExecutionsEnabled( true ) // best execution for grunt players
 	MeleeSyncedNPC_AllowNPCPilotExecuteOtherNPCs( true ) // pilot models don't have syncedMeleeData initialized, so let them use mp pilot executions
+	*/
 	// rodeo
 	Rodeo_BatteryThiefHighlightEnabled( false ) // you don't have to worry about the highlight
 	//Rodeo_SetBatteryRemovalDamageFlags( damageTypes.rodeoBatteryRemoval | DF_BYPASS_SHIELD ) // rodeo will deal bvpass_shield damage to titans
-	/* // classic rodeo
-	ClassicRodeo_SetEnabled( true )
-	ClassicRodeo_AllowContinuallyRemoveBattery( true ) // so you can rip battery all day long!
-	ClassicRodeo_SetBatteryRemovalDamageAmped( true ) // rodeo will deal large damage to titans
-	ClassicRodeo_SetBatteryRemovalDamageCoreMeter( true ) // battery removal will damage titan core meter
-	ClassicRodeo_SetRodeoAttackDamageScale( 1.0 ) // since ripping battery is always, we should also deal additional damage on rodeo to catch up with it
-	ClassicRodeo_BatteryContainerOnlyProtectsOnce( false )
-	ClassicRodeo_OwnerApplyBatteryAllowed( true )
-	ClassicRodeo_SetShouldAutomaticallyDoRodeoSequence( false )
-	*/
+	
+	// classic rodeo modifier settings!
+    //ClassicRodeo_SetEnabled( true ) // handled by playlistvar!
+	ClassicRodeo_SetRodeoAttackDamageScale( 1.0 ) // damage taken from classic rodeo
+	ClassicRodeo_BatteryContainerOnlyProtectsOnce( true ) // battery container can only protect once
 
 	// tempfix specifics!
 	SetShouldPlayFactionDialogue( false ) // don't announce player!
@@ -152,6 +149,7 @@ void function BecomesGruntMode_Init()
 	//MeleeSyncedNPC_AllowExecutingNPCPilot( true ) // hard to perform, but you can oneshot pilots with this
 	AddDamageCallbackSourceID( eDamageSourceId.prowler_melee, NerfProwlerMelee )
 	AddDamageCallbackSourceID( eDamageSourceId.mp_weapon_super_spectre, NerfReaperRocket )
+	//DamageUtility_EnableNPCLocationBasedDamage( true ) // modified function in sh_damage_utility.gnut. allow npcs to deal headshot damages
 }
 
 
@@ -273,8 +271,10 @@ const array<string> GRUNTMODE_SPECIALIST_GRUNTS =
 [
 	"npc_soldier_shield_captain",
 	"npc_soldier_pve_specialist",
-	"npc_soldier_sidearm"
+	"npc_soldier_sidearm",
+	"npc_soldier_pve_eliteguard",
 ]
+
 void function GruntConfig( entity soldier )
 {
 	// friendly highlight
@@ -294,7 +294,14 @@ void function GruntConfig( entity soldier )
 	
 	thread GruntTitleThink( soldier ) // specialist grunts may spawn from dropship, do a think here
 
-	Melee_SetHumanSizedDoClassicExecution( soldier, true ) // grunts uses classic neck snap
+	// now we use specified executions for grunt players & npcs
+	//Melee_SetHumanSizedDoClassicExecution( soldier, true ) // grunts uses classic neck snap
+	// grunt executions: 
+	Melee_SetExecutionRefsOverride( 
+		soldier, 
+		// execution_face_stab_combat is a modified execution ref
+		["execution_neck_snap", "execution_face_stab_combat", "execution_backshot"]
+	)
 }
 
 void function TryHideName( entity soldier )
@@ -338,6 +345,13 @@ void function PilotConfig( entity soldier )
 	// friendly highlight
 	Highlight_SetFriendlyHighlight( soldier, "sp_enemy_pilot" )
 	soldier.Highlight_SetParam( 1, 0, < 2,2,2 > )
+
+	// now we use specified executions for grunt players & npcs
+	// pilot executions: 
+	Melee_SetExecutionRefsOverride( 
+		soldier, 
+		["execution_telefrag", "execution_stim", "execution_grapple", "execution_pulseblade", "execution_cloak", "execution_holopilot", "execution_ampedwall"]
+	)
 }
 
 void function MarvinConfig( entity soldier )
@@ -381,6 +395,13 @@ void function SpectreConfig( entity soldier )
 	thread TryHideName( soldier ) // spectres may spawn from dropship
 
 	DisableLeeching( soldier ) // grunts can't leech
+
+	// now we use specified executions for grunt players & npcs
+	// spectre executions: 
+	Melee_SetExecutionRefsOverride( 
+		soldier, 
+		["execution_neck_snap", "execution_combo", "execution_knockout"]
+	)
 }
 
 void function StalkerConfig( entity soldier )
@@ -833,6 +854,9 @@ bool function CanPlayerUseGruntChatter( entity player, bool damageChatter = fals
 	if ( !IsAlive( player ) )
 		return false
 
+	if ( IsValid( player.GetTitanSoulBeingRodeoed() ) ) // player rodeoing a titan! shouldn't do chatter
+		return false
+
 	bool nextChatterAllow = Time() >= file.playerNextChatterAllowedTime[ player ]
 	bool nextDamageChatterAllow = Time() >= file.playerNextDamageChatterAllowedTime[ player ]
 	if ( damageChatter )
@@ -984,8 +1008,8 @@ void function InitGruntModeSpawnerSettings()
 	ExtraSpawner_SetNPCWeapons( "npc_pilot_elite", ["mp_weapon_rspn101_og", "mp_weapon_r97", "mp_weapon_car", "mp_weapon_hemlok_smg", "mp_weapon_hemlok", "mp_weapon_g2", "mp_weapon_vinson"] )
 	ExtraSpawner_SetNPCGrenadeWeapons( "npc_pilot_elite", ["mp_weapon_thermite_grenade", "mp_weapon_grenade_emp"] )	
 
-	ExtraSpawner_SetNPCWeapons( "npc_stalker", ["mp_weapon_softball", "mp_weapon_smr"] ) // npcs can't shoot "mp_weapon_pulse_lmg"
-	ExtraSpawner_SetNPCExtraWeaponMods( "npc_stalker", ["gruntmode_stalker_weapon"] ) // lower damage explosives
+	ExtraSpawner_SetNPCWeapons( "npc_stalker", ["mp_weapon_softball", "mp_weapon_smr", "mp_weapon_epg"] ) // npcs can't shoot "mp_weapon_pulse_lmg"
+	ExtraSpawner_SetNPCExtraWeaponMods( "npc_stalker", ["multiplayer_npc_grenadier", "gruntmode_stalker_weapon"] ) // lower damage explosives
 
 	ExtraSpawner_SetCarePackageWeapons( ["mp_weapon_epg", "mp_weapon_smr", "mp_weapon_softball"] ) // removed "mp_weapon_pulse_lmg"
 

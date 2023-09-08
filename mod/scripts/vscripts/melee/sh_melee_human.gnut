@@ -56,7 +56,7 @@ function HumanUnsyncedMelee( entity player, bool movestunBlocked )
 
 	player.PlayerMelee_StartAttack( meleeAttackType )
 	
-	bool isDashMelee = meleeWeapon.HasMod( "apex_melee" ) || meleeWeapon.HasMod( "pushback_melee" )
+	bool isDashMelee = meleeWeapon.HasMod( "dash_melee" )
 	bool doJetPackFX = meleeWeapon.HasMod( "jetpack_fx_melee" )
 	bool lungeDisabled = meleeWeapon.HasMod( "no_damage" ) // hardcoded!
 
@@ -120,16 +120,17 @@ function HumanUnsyncedMelee( entity player, bool movestunBlocked )
 							player.Lunge_LockPitch( true )
 					}
 					#if SERVER
-					if ( doJetPackFX )
-					{
-						if ( isDashMelee ) // for dash melee, player not in a valid state won't play a fx, should do it manually
+						// lunging succeeded fx
+						if ( doJetPackFX )
 						{
-							if ( !IsValidMeleeDashState( player ) ) 
-								thread HumanMeleeJetFX( player )
+							if ( isDashMelee ) // for dash melee, player not in a valid state won't play a fx on successful lunge, should do it manually
+							{
+								if ( !IsValidMeleeDashState( player ) ) 
+									thread HumanMeleeJetFX( player )
+							}
+							else
+								thread HumanMeleeJetFX( player ) // if we're lunging to a target, do an extra jetpack fx
 						}
-						else
-							thread HumanMeleeJetFX( player ) // if we're lunging to a target do an extra jetpack fx
-					}
 					#endif
 				}
 			}
@@ -149,7 +150,32 @@ function HumanUnsyncedMelee( entity player, bool movestunBlocked )
 
 	//player.Weapon_StartCustomActivity( meleeActivity1p, false )
 	player.SetSelectedOffhandToMelee()
+
+	// modded melee animation. vanilla has nowhere can call this animation
+#if SERVER
+	if ( meleeWeapon.HasMod( "elbow_melee" ) )
+	{
+		thread DelayedPlayElbowMeleeAnimation( player, meleeWeapon )
+	}
+#endif
 }
+
+#if SERVER
+void function DelayedPlayElbowMeleeAnimation( entity player, entity meleeWeapon )
+{
+	player.EndSignal( "OnDeath" )
+	player.EndSignal( "OnDestroy" )
+	meleeWeapon.EndSignal( "OnDestroy" )
+
+	WaitFrame() // wait for melee being pulled out
+	if ( player.GetActiveWeapon() != meleeWeapon )
+		return
+	
+	string meleeAnimNumber = string( meleeWeapon.GetWeaponSettingInt( eWeaponVar.melee_anim_1p_number ) )
+	player.Weapon_StartCustomActivity( "ACT_VM_ONEHANDED_MELEE_ATTACK" + meleeAnimNumber, false )
+	player.SetSelectedOffhandToMelee()
+}
+#endif
 
 function DoReactionForTitanHit( entity player, entity titan )
 {
@@ -253,7 +279,6 @@ function HumanMeleeAttack( entity player )
 #if CLIENT
 		//MeleeImpactFX( player, meleeWeapon, hitEnt )
 #else
-		// modified for primary_melee.gnut
 		HumanMeleeAttack_DoImpact( player, meleeWeapon, traceResult )
 #endif
 		const float SCALE_WHEN_ENEMY = 1.0
@@ -293,7 +318,7 @@ function HumanMeleeAttack_DoImpact( entity player, entity meleeWeapon, traceResu
 	if( applyKickDamage )
 		damageSource = eDamageSourceId.human_melee
 
-	bool isPushBackMelee = meleeWeapon.HasMod( "fighter_melee" ) || meleeWeapon.HasMod( "apex_melee" ) || meleeWeapon.HasMod( "pushback_melee" )
+	bool isPushBackMelee = meleeWeapon.HasMod( "fighter_melee" ) || meleeWeapon.HasMod( "pushback_melee" )
 	if( isPushBackMelee )
 		return HumanMeleeAttack_PushBackAttack( player, target, meleeWeapon, traceResult, applyKickDamage )
 	// end
@@ -617,7 +642,6 @@ void function PlayerTriesSyncedMelee_FallbackToHumanMeleeAttack( entity player, 
 #endif
 */
 #if SERVER
-	// modified for primary_melee.gnut
 		HumanMeleeAttack_DoImpact( player, meleeWeapon, traceResult )
 #endif
 	}
@@ -791,7 +815,7 @@ void function HumanMeleeAttack_PushBackAttack( entity player, entity target, ent
 	//vector backVel = -0.5*pushBackVelocity + player.GetVelocity() // player receive less pushback, no need for now
 	vector backVel = -pushBackVelocity + player.GetVelocity() // player receive full pushback since we got ground frictions back
 	if ( !isFighterMelee ) // fighter melee will make player receive full self knockback
-		backVel.z = 20 // don't let player leave ground through this
+		backVel.z = 20 // otherwise we don't let player leave ground through knockback
 	backVel *= HUMAN_MELEE_SELF_PUSH_SCALE // since we've added scripted ground friction, shouldn't have a high backVel
 
 	if ( isFighterMelee ) // fighter melee visual and sound fix, for they're too fast and client is hard to control it
@@ -1012,7 +1036,7 @@ void function FakeGroundExecutionThink( entity player, entity fakeGrunt, entity 
 		}
 	)
 
-	WaitFrame()
+	WaitFrame() // wait for player can really lunge to target
 	player.Lunge_SetTargetEntity( realTarget, true )
 }
 #endif

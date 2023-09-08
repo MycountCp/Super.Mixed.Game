@@ -32,11 +32,14 @@ void function MpTitanWeaponFlameWave_Init()
 
 void function OnWeaponActivate_titancore_flame_wave( entity weapon )
 {
-	if( weapon.HasMod( "storm_core" ) )
+	// modded weapon
+	if( weapon.HasMod( "archon_storm_core" ) )
 		return OnWeaponActivate_titancore_storm_wave( weapon )
 	if( weapon.HasMod( "ground_slam" ) )
 		return OnWeaponActivate_titancore_ground_slam( weapon )
+	//
 
+	// vanilla behavior
 	weapon.EmitWeaponSound_1p3p( "flamewave_start_1p", "flamewave_start_3p" )
 	OnAbilityCharge_TitanCore( weapon )
 }
@@ -44,11 +47,14 @@ void function OnWeaponActivate_titancore_flame_wave( entity weapon )
 
 bool function OnAbilityCharge_FlameWave( entity weapon )
 {
-	if( weapon.HasMod( "storm_core" ) )
+	// modded weapon
+	if( weapon.HasMod( "archon_storm_core" ) )
 		return OnAbilityCharge_StormWave( weapon )
 	if( weapon.HasMod( "ground_slam" ) )
 		return OnAbilityCharge_GoundSlam( weapon )
+	//
 
+	// vanilla behavior
 	entity owner = weapon.GetWeaponOwner()
 	#if SERVER
 		float chargeTime = weapon.GetWeaponSettingFloat( eWeaponVar.charge_time )
@@ -70,29 +76,44 @@ bool function OnAbilityCharge_FlameWave( entity weapon )
 
 void function OnAbilityChargeEnd_FlameWave( entity weapon )
 {
-	if( weapon.HasMod( "storm_core" ) )
+	// modded weapon
+	if( weapon.HasMod( "archon_storm_core" ) )
 		return OnAbilityChargeEnd_StormWave( weapon )
 	if( weapon.HasMod( "ground_slam" ) )
 		return OnAbilityChargeEnd_GoundSlam( weapon )
+	//
 
+	// vanilla behavior
 	entity owner = weapon.GetWeaponOwner()
 	#if SERVER
 		if ( owner.IsPlayer() )
+		{
 			owner.SetTitanDisembarkEnabled( true )
+			// anim fix for titanpick
+			HandlePlayerFlameCoreAnim( owner )
+		}
+
+		// atlas npc titans can't use flame core properly, adding fix
+		if ( owner.IsNPC() && IsAlive( owner ) )
+			HandleNPCTitanFlameCoreUsage( owner, weapon )
+
 		OnAbilityChargeEnd_TitanCore( weapon )
-		
-		// anim fix for titanpick
-		TEMP_FlameWaveAnimFix( owner )
 	#endif // #if SERVER
 }
 
 var function OnWeaponPrimaryAttack_titancore_flame_wave( entity weapon, WeaponPrimaryAttackParams attackParams )
 {
-	if( weapon.HasMod( "storm_core" ) )
+	// debug
+	//print( "RUNNING OnWeaponPrimaryAttack_titancore_flame_wave()" )
+
+	// modded weapon
+	if( weapon.HasMod( "archon_storm_core" ) )
 		return OnWeaponPrimaryAttack_titancore_storm_wave( weapon, attackParams )
 	if( weapon.HasMod( "ground_slam" ) )
 		return OnWeaponPrimaryAttack_titancore_ground_slam( weapon, attackParams )
+	//
 
+	// vanilla behavior
 	OnAbilityStart_TitanCore( weapon )
 
 	#if SERVER
@@ -312,17 +333,89 @@ void function ZeroDamageAndClearInflictorArray( entity ent, var damageInfo )
 
 // modified functions
 #if SERVER
-void function TEMP_FlameWaveAnimFix( entity player )
+void function HandleNPCTitanFlameCoreUsage( entity npc, entity weapon )
 {
-	// for titan pick: only ogre titans has such animations
-	entity soul = player.GetTitanSoul()
-	if ( !IsValid( soul ) )
-		return
-	string titanType = GetSoulTitanSubClass( soul )
-	if ( titanType == "ogre" ) // ogres can recover from animation, no need to fix
+	// for titan pick: atlas titans don't have proper anim event for core usage
+	if ( !ShouldFixAnimForTitan( npc ) )
 		return
 
-	player.Anim_PlayGesture( "ACT_MP_STAND_IDLE", 0.1, 0.1, 0.1 ) // temp fix
-	// fadein, fadeout, blendtime
+	// build fake attack params
+	vector attackPos = npc.EyePosition()
+	int attachId = -1
+	if ( npc.LookupAttachment( "CHESTFOCUS" ) > 0 )
+		attachId = npc.LookupAttachment( "CHESTFOCUS" )
+	else if ( npc.LookupAttachment( "PROPGUN" ) > 0 )
+		attachId = npc.LookupAttachment( "PROPGUN" )
+
+	if ( attachId > 0 )
+		attackPos = npc.GetAttachmentOrigin( attachId )
+
+	vector attackDir = npc.GetForwardVector()
+	attachId = -1
+	if ( npc.LookupAttachment( "PROPGUN" ) > 0 )
+		attachId = npc.LookupAttachment( "PROPGUN" )
+
+	if ( attachId > 0 )
+	{
+		attackDir = npc.GetAttachmentAngles( attachId )
+		attackDir.x = 0
+		attackDir.z = 0
+		attackDir = AnglesToForward( attackDir )
+	}
+
+	WeaponPrimaryAttackParams npcAttackParams
+	npcAttackParams.pos = attackPos
+	npcAttackParams.dir = attackDir
+
+	// remove core frac
+	entity soul = npc.GetTitanSoul()
+	SoulTitanCore_SetExpireTime( soul, Time() )
+	SoulTitanCore_SetNextAvailableTime( soul, 0.0 )
+	// run primaryattack function
+	OnWeaponPrimaryAttack_titancore_flame_wave( weapon, npcAttackParams )
+	// stop animation after delay
+	thread StopOffhandAnimationAfterDelay( npc, 0.8 ) // give anim a little time( 0.8s )
+}
+
+void function HandlePlayerFlameCoreAnim( entity player )
+{
+	// for titan pick: atlas titans don't have proper anim event for core usage
+	if ( !ShouldFixAnimForTitan( player ) )
+		return
+
+	thread StopOffhandAnimationAfterDelay( player, 0.5 ) // give anim a little time( 0.5s )
+}
+
+bool function ShouldFixAnimForTitan( entity titan )
+{
+	if ( !titan.IsTitan() )
+		return false
+	entity soul = titan.GetTitanSoul()
+	if ( !IsValid( soul ) )
+		return false
+	string titanType = GetSoulTitanSubClass( soul )
+	if ( titanType != "atlas" ) // only atlas titans can't recover from animation
+		return false
+
+	// all checks passes
+	return true
+}
+
+void function StopOffhandAnimationAfterDelay( entity titan, float delay )
+{
+	titan.EndSignal( "OnDeath" )
+	titan.EndSignal( "OnDestroy" )
+	if ( titan.IsPlayer() ) // player specific: no need to fix anim if they disembark
+    	titan.EndSignal( "DisembarkingTitan" )
+
+	wait delay
+	if ( titan.IsPlayer() )
+		titan.Anim_StopGesture( 0 )
+	else
+	{
+		// never end animation if we're in a context action!
+		if ( !titan.ContextAction_IsActive() && !titan.ContextAction_IsBusy() )
+			titan.Anim_Stop()
+	}
 }
 #endif

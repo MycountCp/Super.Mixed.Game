@@ -1613,3 +1613,20 @@ void function FindAndRemove( array<entity> arr, entity target )
 		arr.remove( findIndex )
 	}
 }
+
+entity function DEBUG_Model()
+{
+	#if SERVER
+		entity prop = CreatePropDynamic( $"models/weapons/mastiff_stgn/ptpov_mastiff.mdl", GetPlayerArray()[0].GetOrigin(), <0,0,0> )
+		prop.SetSkin( WEAPON_SKIN_INDEX_CAMO )
+		prop.SetCamo( 14 )
+	#elseif CLIENT
+		entity prop = CreateClientSidePropDynamic( GetPlayerArray()[0].GetOrigin(), <0,0,0>, $"models/weapons/mastiff_stgn/ptpov_mastiff.mdl" )
+		prop.SetSkin( WEAPON_SKIN_INDEX_CAMO )
+		prop.SetCamo( 14 )
+	#endif
+
+	#if SERVER || CLIENT
+		return prop
+	#endif
+}

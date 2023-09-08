@@ -39,7 +39,7 @@ function Anim_Init()
 	RegisterSignal( "NewFirstPersonSequence" )
 	RegisterSignal( "ScriptAnimStop" )
 	RegisterSignal( "AnimEventKill" )
-	// oh no
+	// modified error anim handle!
 	RegisterSignal( "ErrorAnimStart" )
 
 	AddGlobalAnimEvent( "enable_weapon", GlobalAnimEvent_EnableWeapon )
@@ -382,162 +382,220 @@ function __PlayAnim( guy, animation_name, reference = null, optionalTag = null, 
 	}
 	#endif
 
-	try // hack!
+	// error animation handle
+	expect string( animation )
+	if ( !guy.Anim_HasSequence( animation ) )
 	{
-		if ( guy.IsNPC() )
+		// log print
+		//asset modelName = GetBestModelNameForErrorAnim( guy, animation )
+		//print( "Model animation error in __PlayAnim()! Resetting to " + string( modelName ) )
+		//print( "Entity's original model is " + string( player.GetModelName() ) )
+		//print( "This animation is: " + animation )
+
+		// error animation handle start
+		thread TrackErrorAnimationEnd( guy, animation )
+	}
+
+	if ( guy.IsNPC() )
+	{
+		guy.EndSignal( "OnDeath" )
+		Assert( IsAlive( guy ), "Guy " + guy + " tried to play an anim, but it is not alive." )
+	}
+
+	if ( reference )
+	{
+		if ( reference == guy )
 		{
-			guy.EndSignal( "OnDeath" )
-			Assert( IsAlive( guy ), "Guy " + guy + " tried to play an anim, but it is not alive." )
-		}
+			local position = GetRefPosition( reference )
+			local origin = position.origin
+			local angles = position.angles
 
-		if ( reference )
-		{
-			if ( reference == guy )
-			{
-				local position = GetRefPosition( reference )
-				local origin = position.origin
-				local angles = position.angles
-
-				if ( guy.IsNPC() )
-					guy.Anim_ScriptedPlayWithRefPoint( animation, origin, angles, blendTime )
-				else
-					guy.Anim_PlayWithRefPoint( animation, origin, angles, blendTime )
-
-				return
-			}
-
-			if ( optionalTag )
-			{
-				if ( typeof( reference ) == "vector" )
-				{
-					Assert( typeof( optionalTag ) == "vector", "Expected angles but got " + optionalTag )
-					if ( guy.IsNPC() )
-						guy.Anim_ScriptedPlayWithRefPoint( animation, reference, optionalTag, blendTime )
-					else
-						guy.Anim_PlayWithRefPoint( animation, reference, optionalTag, blendTime )
-					return
-				}
-
-				Assert( typeof( optionalTag ) == "string", "Passed invalid optional tag " + optionalTag )
-
-				if ( guy.GetParent() == reference )
-				{
-					if ( guy.IsNPC() )
-						guy.Anim_ScriptedPlay( animation )
-					else
-						guy.Anim_Play( animation )
-				}
-				else
-				{
-					local attachIndex = reference.LookupAttachment( optionalTag )
-					local origin = reference.GetAttachmentOrigin( attachIndex )
-					local angles = reference.GetAttachmentAngles( attachIndex )
-					if ( guy.IsNPC() )
-					{
-						//local origin = reference.GetOrigin()
-						//local angles = reference.GetAngles()
-						guy.Anim_ScriptedPlayWithRefPoint( animation, origin, angles, blendTime )
-					}
-					else
-					{
-						//local animStartPos = guy.Anim_GetStartForRefEntity_Old( animation, reference, optionalTag )
-						//local origin = animStartPos.origin
-						//local angles = animStartPos.angles
-						guy.Anim_PlayWithRefPoint( animation, origin, angles, blendTime )
-					}
-				}
-				return
-			}
-		}
-		else
-		{
-			Assert( optionalTag == null, "Reference was null, but optionalTag was not. Did you mean to set the tag?" )
-		}
-
-		if ( reference != null && guy.GetParent() == reference )
-		{
 			if ( guy.IsNPC() )
-				guy.Anim_ScriptedPlay( animation )
+				guy.Anim_ScriptedPlayWithRefPoint( animation, origin, angles, blendTime )
 			else
-				guy.Anim_Play( animation )
+				guy.Anim_PlayWithRefPoint( animation, origin, angles, blendTime )
 
 			return
 		}
 
-		if ( !reference )
-			reference = guy
-
-		local origin = reference.GetOrigin()
-		local angles = reference.GetAngles()
-
-		if ( guy.IsNPC() )
-			guy.Anim_ScriptedPlayWithRefPoint( animation, origin, angles, blendTime )
-		else
-			guy.Anim_PlayWithRefPoint( animation, origin, angles, blendTime )
-	}
-	catch( ex ) // an error in try-catch will crash the game, should notice it
-	{
-		print( ex )
-		if ( !( "modelChangedForErrorAnim" in guy.s ) )
-			guy.s.modelChangedForErrorAnim <- false
-		if ( guy.s.modelChangedForErrorAnim ) // already doing a wrong animation?
+		if ( optionalTag )
 		{
-			print( "Reset animation model error! Not playing any animation" )
-			guy.Signal( "OnAnimationInterrupted" ) // mark this animation as interruped
+			if ( typeof( reference ) == "vector" )
+			{
+				Assert( typeof( optionalTag ) == "vector", "Expected angles but got " + optionalTag )
+				if ( guy.IsNPC() )
+					guy.Anim_ScriptedPlayWithRefPoint( animation, reference, optionalTag, blendTime )
+				else
+					guy.Anim_PlayWithRefPoint( animation, reference, optionalTag, blendTime )
+				return
+			}
+
+			Assert( typeof( optionalTag ) == "string", "Passed invalid optional tag " + optionalTag )
+
+			if ( guy.GetParent() == reference )
+			{
+				if ( guy.IsNPC() )
+					guy.Anim_ScriptedPlay( animation )
+				else
+					guy.Anim_Play( animation )
+			}
+			else
+			{
+				local attachIndex = reference.LookupAttachment( optionalTag )
+				local origin = reference.GetAttachmentOrigin( attachIndex )
+				local angles = reference.GetAttachmentAngles( attachIndex )
+				if ( guy.IsNPC() )
+				{
+					//local origin = reference.GetOrigin()
+					//local angles = reference.GetAngles()
+					guy.Anim_ScriptedPlayWithRefPoint( animation, origin, angles, blendTime )
+				}
+				else
+				{
+					//local animStartPos = guy.Anim_GetStartForRefEntity_Old( animation, reference, optionalTag )
+					//local origin = animStartPos.origin
+					//local angles = animStartPos.angles
+					guy.Anim_PlayWithRefPoint( animation, origin, angles, blendTime )
+				}
+			}
 			return
 		}
-
-		asset modelName = GetBestModelNameForErrorAnim( guy )
-		asset orgModel = guy.GetModelName()
-		guy.SetModel( modelName )
-		print( "Model animation error int __PlayAnim()! Resetting to " + string( modelName ) )
-		guy.s.modelChangedForErrorAnim = true
-		thread __PlayAnim( guy, animation_name, reference, optionalTag, blendTime )
-		print( "this animation is: " + animation_name )
-		thread TrackErrorAnimationEnd( guy, orgModel )
+	}
+	else
+	{
+		Assert( optionalTag == null, "Reference was null, but optionalTag was not. Did you mean to set the tag?" )
 	}
 
+	if ( reference != null && guy.GetParent() == reference )
+	{
+		if ( guy.IsNPC() )
+			guy.Anim_ScriptedPlay( animation )
+		else
+			guy.Anim_Play( animation )
+
+		return
+	}
+
+	if ( !reference )
+		reference = guy
+
+	local origin = reference.GetOrigin()
+	local angles = reference.GetAngles()
+
+	if ( guy.IsNPC() )
+		guy.Anim_ScriptedPlayWithRefPoint( animation, origin, angles, blendTime )
+	else
+		guy.Anim_PlayWithRefPoint( animation, origin, angles, blendTime )
 }
 
 // ANIMATIOIN ERROR HANDLER!
-asset function GetBestModelNameForErrorAnim( entity guy )
+asset function GetBestModelNameForErrorAnim( entity guy, string animationOverride = "" )
 {
-	asset modelName = $"models/humans/pilots/pilot_medium_geist_m.mdl" // default
-	if( guy.IsMechanical() )
-		modelName = $"models/humans/pilots/pilot_light_ged_m.mdl"
-	if( guy.IsPlayer() )
+	asset modelName = $"models/humans/pilots/pilot_medium_geist_m.mdl"
+	// player default
+	if ( guy.IsPlayer() )
+		modelName = guy.GetPlayerSettingsAsset( "bodymodel" )
+	// npc default
+	else if ( guy.IsNPC() )
 	{
-		if( guy.IsTitan() )
-			modelName = GetPlayerSettingsAssetForClassName( guy.s.storedPlayerSettings, "bodymodel" )
-		else
-			modelName = guy.GetPlayerSettingsAsset( "bodymodel" )
+		// mechanical
+		if( guy.IsMechanical() )
+			modelName = $"models/robots/spectre/imc_spectre.mdl"
+		else // human
+		{
+			modelName = TEAM_IMC_GRUNT_MODEL_LMG
+			if ( guy.GetTeam() == TEAM_MILITIA )
+				modelName = TEAM_MIL_GRUNT_MODEL_LMG
+		}
 	}
+
+	// in case we have an animation pending to play
+	if ( animationOverride != "" )
+	{
+		// try to find animation from current model
+		entity animDummy = CreatePropDynamic( modelName )
+		// can't find valid animation!!!
+		if ( !animDummy.Anim_HasSequence( animationOverride ) )
+		{
+			// try advanced search...
+			asset advancedModel = $""
+			// player
+			if ( guy.IsPlayer() )
+			{
+				// sp pilot model do have more animations
+				// no further model for mechanical pilots
+				if ( !guy.IsMechanical() )
+					advancedModel = $"models/humans/pilots/sp_medium_reaper_m.mdl"
+			}
+			// npc
+			else if ( guy.IsNPC() )
+			{
+				// no further model for human npcs, since grunt models are the best choice
+				if ( guy.IsMechanical() )
+					advancedModel = $"models/humans/pilots/pilot_light_ged_m.mdl"
+			}
+
+			if ( advancedModel != $"" )
+			{
+				animDummy.SetModel( advancedModel )
+				// still can't find animation!!!
+				if ( !animDummy.Anim_HasSequence( animationOverride ) )
+					modelName = $"" // return a null asset will interrupt TrackErrorAnimationEnd()
+			}
+			else // can't find advanced model for this entity
+				modelName = $"" // return a null asset will interrupt TrackErrorAnimationEnd()
+		}
+		// don't forget to destroy dummy
+		animDummy.Destroy()
+	}
+
 	return modelName
 }
 
-void function TrackErrorAnimationEnd( guy, asset orgModel )
+void function TrackErrorAnimationEnd( entity guy, string animationOverride = "" )
 {
-	expect entity( guy )
 	if( !IsValid( guy ) )
 		return
+
+	asset modelName = GetBestModelNameForErrorAnim( guy, animationOverride )
+	if ( modelName == $"" ) // can't find valid model to replace?
+	{
+		print( "[ERROR ANIMATION HANDLE] Can't find any valid model! Intterupting current animation" )
+		// better than nothing failsafe
+		guy.Signal( "OnAnimationInterrupted" )
+		guy.Signal( "OnAnimationDone" )
+		return
+	}
+
+	asset modelToRecover = guy.GetModelName()
+	int bodygroupToRecover = guy.GetFullBodygroup()
+
+	guy.SetModel( modelName )
 
 	guy.Signal( "ErrorAnimStart" )
 	guy.EndSignal( "OnDestroy" )
 	guy.EndSignal( "OnAnimationInterrupted" )
 	guy.EndSignal( "OnAnimationDone" )
 
+	// store data into a table so we don't miss them
+	table results = {
+		orgModel = modelToRecover
+		orgBodygroup = bodygroupToRecover
+	}
+
 	OnThreadEnd(
-		function():( guy, orgModel )
+		function():( guy, results )
 		{
 			if( IsValid( guy ) )
 			{
-				if ( "modelChangedForErrorAnim" in guy.s )
-					guy.s.modelChangedForErrorAnim = false // clean up
-				// check if it's embarking
+				asset modelToRecover = expect asset( results.orgModel )
+				int bodygroupToRecover = expect int( results.orgBodygroup )
+
+				// player specific: check for embarking
 				if( guy.IsPlayer() && guy.p.isEmbarking )
-					thread TrackPlayerBecomePilot( guy, orgModel )
+					thread TrackPlayerBecomePilot( guy, modelToRecover, bodygroupToRecover )
 				else
-					thread DelayedResetGuyModel( guy, orgModel )
+					thread DelayedResetGuyModel( guy, modelToRecover, bodygroupToRecover )
 			}
 		}
 	)
@@ -545,7 +603,7 @@ void function TrackErrorAnimationEnd( guy, asset orgModel )
 	WaitForever()
 }
 
-void function TrackPlayerBecomePilot( entity player, asset orgModel )
+void function TrackPlayerBecomePilot( entity player, asset orgModel, int orgBodygroup )
 {
 	//print( "Error player has become titan, waiting for leaving.." )
 	player.EndSignal( "OnDeath" )
@@ -567,11 +625,12 @@ void function TrackPlayerBecomePilot( entity player, asset orgModel )
 	if( IsAlive( player ) )
 	{
 		player.SetModel( orgModel )
+		player.SetFullBodygroup( orgBodygroup )
 		//print( "Leaving titan! resetting model to " + string( orgModel ) )
 	}
 }
 
-void function DelayedResetGuyModel( entity guy, asset orgModel )
+void function DelayedResetGuyModel( entity guy, asset orgModel, int orgBodygroup )
 {
 	guy.EndSignal( "OnDestroy" )
 	//WaitFrame() // give 1 frame grace period, so it won't mess up most animations. guess it's no need if we have parent checks
@@ -579,7 +638,8 @@ void function DelayedResetGuyModel( entity guy, asset orgModel )
 		WaitFrame()
 
 	guy.SetModel( orgModel )
-	print( "Error animation end! resetting model to " + string( orgModel ) )
+	guy.SetFullBodygroup( orgBodygroup )
+	//print( "Error animation end! resetting model to " + string( orgModel ) )
 }
 //
 
@@ -1059,54 +1119,44 @@ function CalcSequenceBlendTime( FirstPersonSequenceStruct sequence, entity playe
 	if ( sequence.blendTime != CALCULATE_SEQUENCE_BLEND_TIME )
 		return
 
-	try
+	// error animation handle
+	if ( !player.Anim_HasSequence( sequence.thirdPersonAnim ) )
 	{
-		sequence.blendTime = 0
-		if ( ent && sequence.thirdPersonAnim != "" )
-		{
-			local start
-			if ( sequence.attachment != "" )
-			{
-				start = player.Anim_GetStartForRefEntity_Old( sequence.thirdPersonAnim, ent, sequence.attachment )
-			}
-			else
-			{
-				start = {}
-				start.origin <- ent.GetOrigin()
-				start.angles <- ent.GetAngles()
-			}
+		// log print
+		//asset modelName = GetBestModelNameForErrorAnim( guy, sequence.thirdPersonAnim )
+		//print( "Model animation error in CalcSequenceBlendTime()! Resetting to " + string( modelName ) )
+		//print( "Entity's original model is " + string( player.GetModelName() ) )
+		//print( "This animation is: " + sequence.thirdPersonAnim )
 
-			if ( sequence.teleport )
-			{
-				player.SetAbsOrigin( start.origin )
-				player.SetAbsAngles( start.angles )
-			}
-			else
-			{
-				local dist = Distance( player.GetOrigin(), start.origin )
-				sequence.blendTime = GraphCapped( dist, 0, 350, 0.25, 0.9 )
-			}
-		}
+		// error animation handle start
+		thread TrackErrorAnimationEnd( player, sequence.thirdPersonAnim )
 	}
-	catch( ex )
+
+	sequence.blendTime = 0
+	if ( ent && sequence.thirdPersonAnim != "" )
 	{
-		print( ex )
-		if ( !( "modelChangedForErrorAnim" in player.s ) )
-			player.s.modelChangedForErrorAnim <- false
-		if ( player.s.modelChangedForErrorAnim ) // already doing a wrong animation?
+		local start
+		if ( sequence.attachment != "" )
 		{
-			print( "Reset animation model error! Not calculating any blend time" )
-			player.Signal( "OnAnimationInterrupted" ) // mark this animation as interruped
-			return
+			start = player.Anim_GetStartForRefEntity_Old( sequence.thirdPersonAnim, ent, sequence.attachment )
+		}
+		else
+		{
+			start = {}
+			start.origin <- ent.GetOrigin()
+			start.angles <- ent.GetAngles()
 		}
 
-		asset modelName = GetBestModelNameForErrorAnim( player )
-		asset orgModel = player.GetModelName()
-		player.SetModel( modelName )
-		print( "Model animation error in CalcSequenceBlendTime()! resetting to " + string( modelName ) )
-		thread TrackErrorAnimationEnd( player, orgModel )
-
-		CalcSequenceBlendTime( sequence, player, ent )
+		if ( sequence.teleport )
+		{
+			player.SetAbsOrigin( start.origin )
+			player.SetAbsAngles( start.angles )
+		}
+		else
+		{
+			local dist = Distance( player.GetOrigin(), start.origin )
+			sequence.blendTime = GraphCapped( dist, 0, 350, 0.25, 0.9 )
+		}
 	}
 }
 
@@ -1164,6 +1214,7 @@ void function __PlayFPSAnimInternal( entity player, string anim3rd, string anim1
 
 void function FirstPersonSequence( FirstPersonSequenceStruct sequence, entity player, entity ent = null )
 {
+	// modified error anim handle
 	player.Signal( "NewFirstPersonSequence" )
 	player.EndSignal( "NewFirstPersonSequence" )
 	player.EndSignal( "ScriptAnimStop" )
@@ -1175,7 +1226,22 @@ void function FirstPersonSequence( FirstPersonSequenceStruct sequence, entity pl
 	}
 
 	//figure out if we have/should do a first person sequence and handle Spawn slots.
+	//bool doFirstPersonAnim = sequence.firstPersonAnim != ""
+	// modified check for npc animations
 	bool doFirstPersonAnim = sequence.firstPersonAnim != "" && player.IsPlayer() // check for npc executions
+	
+	// error animation handle for entity
+	if ( !player.Anim_HasSequence( sequence.thirdPersonAnim ) )
+	{
+		// log print
+		//asset modelName = GetBestModelNameForErrorAnim( player, sequence.thirdPersonAnim )
+		//print( "Model animation error in FirstPersonSequence()! Resetting to " + string( modelName ) )
+		//print( "Entity's original model is " + string( player.GetModelName() ) )
+		//print( "This animation is: " + sequence.thirdPersonAnim )
+
+		// error animation handle start
+		thread TrackErrorAnimationEnd( player, sequence.thirdPersonAnim )
+	}
 
 	entity firstPersonProxy
 	if ( doFirstPersonAnim )
@@ -1208,9 +1274,9 @@ void function FirstPersonSequence( FirstPersonSequenceStruct sequence, entity pl
 	}
 	else if ( sequence.thirdPersonCameraAttachments.len() > 0 )
 	{
-		//if ( player.IsPlayer() )
-		// HACK check for _melee_synced_titan.gnut
-		if ( player.IsPlayer() && sequence.thirdPersonCameraAttachments[0] != "" )
+		// HACK check for modified execution camera, remove for now
+		//if ( player.IsPlayer() && sequence.thirdPersonCameraAttachments[0] != "" )
+		if ( player.IsPlayer() )
 		{
 			entity fpProxy = player.GetFirstPersonProxy() //Shouldn't ever need to show the first person proxy when doing thirdPersonCameraAttachments; hide it explicitly here to stop it from showing up when chaining animations
 			if ( IsValid( fpProxy )  )
@@ -1448,8 +1514,8 @@ void function FirstPersonSequence( FirstPersonSequenceStruct sequence, entity pl
 		if ( !IsAlive( player ) )
 			return
 
- 		if ( IsDisconnected( player ) )
- 			return
+		if ( IsDisconnected( player ) )
+			return
 	}
 	else
 	if ( player.IsNPC() )

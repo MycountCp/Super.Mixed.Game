@@ -56,6 +56,12 @@ WeaponData
 			"explosion_damage"								"*0"
 			"impact_effect_table"							"droppod_impact"
 		}
+
+		// modded bleedout specific
+		bleedout_balance
+		{
+			"explosion_damage"								"*0.4" // 60 dps. can't really kill a target, needs testing on area locking ability
+		}
 		
 		// grunt mode specifics
 		grunt_mode // base mod for tacticals and ordnances: no regen

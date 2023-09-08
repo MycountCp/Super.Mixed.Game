@@ -16,6 +16,13 @@ WeaponData
 
 	// mozambique don't have a cyl silencer
 
+	// buff npc damage for MP
+	MP_BASE
+	{
+		//"npc_damage_near_value"   						"18" // 11 in vanilla
+		//"npc_damage_far_value"							"12" // 5 in vanilla
+	}
+
 	Mods
 	{
 		iron_sights
@@ -169,12 +176,20 @@ WeaponData
 		{
 			"titanarmor_critical_hit_required"          "0"
 		}
+
+		// modded bleedout specific
 		bleedout_balance
 		{
 			// shotgun_pistol has "silencer", so use a multiplier
 			"damage_near_value"				"*0.8" // 24*3
 			"damage_far_value"				"*0.8" // 20*3
+
+			"fire_rate"						"--0.4" // 2.6
+
+			"damage_headshot_scale"			"--0.25" // 1.25
 		}
+
+		// nessie own balance
 		nessie_balance
 		{
 			"damage_near_value"			"*0.5"
@@ -190,6 +205,14 @@ WeaponData
 			//"fire_rate"   				"2.2"
 			//"zoom_fov"					"60"
 			//"ads_move_speed_scale"							"1.0"
+		}
+
+		// grunt mode specific
+		gm_flyer // use together with silencer
+		{
+			"damage_near_value"   			"++5" // 25
+			"fire_rate"						"--0.4" // 2.6
+			"damage_headshot_scale"			"--0.25" // 1.25
 		}
 	}
 

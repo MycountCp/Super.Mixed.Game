@@ -6,13 +6,34 @@ global function MeleeSyncedTitanShared_Init
 #if SERVER
 global function MeleeSyncedTitan_AddExecutionRefCallback
 global function MeleeSyncedTitan_ExecutionRefHasCallback
-global function MeleeSyncedTitan_RunCallbackForRef
+global function MeleeSyncedTitan_RunCallbacksForRef
 
 global function MeleeSyncedTitan_SetExecutionRefLoadoutReplaceCallback
 global function MeleeSyncedTitan_ExecutionRefHasLoadoutReplaceCallback
 global function MeleeSyncedTitan_RunLoadoutReplaceCallbackForRef
 
+// mostly for core weapon mods, remove them when loadout replacing
+global function MeleeSyncedTitan_AddModToRemoveOnLoadoutReplace
+
 struct ExecutionSavedLoadout
+{
+	// can't just store a primary weapon entity, as TakeWeapon_NoDelete() will leave a weapon model in titan's hand
+	string primary = "" // primary weapon
+	array<string> primaryMods = []
+	int primaryAmmo
+	int primarySkin
+	int primaryCamo
+
+	entity replacedPrimaryEnt
+
+	table<int, entity> savedOffhandWeaponEnts
+}
+
+// npc specific loadout saving
+// TakeOffhandWeapon_NoDelete() can't be used on npcs
+// they'll still consider these weapon in their inventory
+// causes crash of having multiple weapons at same usage
+struct ExecutionSavedLoadout_NPC
 {
 	string primary = "" // primary weapon
 	array<string> primaryMods = []
@@ -35,8 +56,6 @@ struct ExecutionSavedLoadout
 
 	string equipment = "" // core
 	array<string> equipmentMods = []
-
-	table<int, float> offhandCooldowns = {} // all offhands cooldown
 }
 
 struct
@@ -44,6 +63,9 @@ struct
 	table< string, array<void functionref( entity, entity )> > titanExecutionRefCallbacks
 	table< string, void functionref( entity ) > titanExecutionRefLoadoutReplaceCallback
 	table<entity, ExecutionSavedLoadout> titanExecutionSavedLoadout
+	table<entity, ExecutionSavedLoadout_NPC> titanExecutionSavedLoadout_NPC
+
+	array<string> modsToRemoveOnLoadoutReplace
 } file
 #endif
 
@@ -297,207 +319,310 @@ void function Execution_BT_KickShoot( entity attacker )
 }
 
 // utility
+// can be set through MeleeSyncedTitan_SetSoulShouldReplaceLoadoutOnExecution()
 void function ReplaceExecutionAttackerLoadout( entity guy, string primary = "", array<string> primaryMods = [], string special = "", array<string> specialMods = [], string antiRodeo = "", array<string> antiRodeoMods = [], string ordnance = "", array<string> ordnanceMods = [], string melee = "", array<string> meleeMods = [], string equipment = "", array<string> equipmentMods = [] )
 {
 	thread ReplaceExecutionAttackerLoadout_Threaded( guy, primary, primaryMods, special, specialMods, antiRodeo, antiRodeoMods, ordnance, ordnanceMods, melee, meleeMods, equipment, equipmentMods )
 }
 
-// note that doing this will pause titan offhands' cooldowns, and will sometimes regen a wrong amount of cooldown
-// use it carefully through MeleeSyncedTitan_SetSoulShouldReplaceLoadoutOnExecution() to prevent breaking the gameplay
 void function ReplaceExecutionAttackerLoadout_Threaded( entity guy, string primary = "", array<string> primaryMods = [], string special = "", array<string> specialMods = [], string antiRodeo = "", array<string> antiRodeoMods = [], string ordnance = "", array<string> ordnanceMods = [], string melee = "", array<string> meleeMods = [], string equipment = "", array<string> equipmentMods = [] )
 {
-	ExecutionSavedLoadout savedLoadout
-	if ( !( guy in file.titanExecutionSavedLoadout ) )
+	// player loadout saving
+	if ( guy.IsPlayer() )
+	{
+		ExecutionSavedLoadout savedLoadout
 		file.titanExecutionSavedLoadout[ guy ] <- savedLoadout
 
-	// save current loadout and take them off, so there won't be any issue changing to a dual smart ammo loadout
-	bool hasChangedOffhand = false
-
-	// primary weapon
-	entity primaryToSave
-	string primaryNameToSave
-	array<string> primaryModsToSave
-	bool primarySaved = false
-	array<entity> mainWeapons = guy.GetMainWeapons()
-	if ( mainWeapons.len() > 0 )
-		primaryToSave = mainWeapons[0]
-	if ( IsValid( primaryToSave ) )
-	{
-		primaryNameToSave = primaryToSave.GetWeaponClassName()
-		primaryModsToSave = primaryToSave.GetMods()
-	}
-
-	if ( IsValid( primaryToSave ) && primary != "" )
-	{
-		savedLoadout.primary = primaryNameToSave
-		savedLoadout.primaryMods = primaryModsToSave
-		try { savedLoadout.primaryAmmo = primaryToSave.GetWeaponPrimaryClipCount() } // some weapon don't have clip so try-catch it
-		catch (ex) {}
-		savedLoadout.primarySkin = primaryToSave.GetSkin()
-		savedLoadout.primaryCamo = primaryToSave.GetCamo()
-
-		primaryToSave.Destroy() // so we can take off exact primary weapon
-		primarySaved = true // mark as primary saved
-	}
-
-	// defensive
-	entity specialToSave = guy.GetOffhandWeapon( OFFHAND_SPECIAL )
-	string specialNameToSave
-	array<string> specialModsToSave
-	bool specialSaved = false
-	if ( IsValid( specialToSave ) )
-	{
-		specialNameToSave = specialToSave.GetWeaponClassName()
-		specialModsToSave = specialToSave.GetMods()
-	}
-
-	if ( IsValid( specialToSave ) && special != "" )
-	{
-		savedLoadout.special = specialNameToSave
-		savedLoadout.specialMods = specialModsToSave
-		hasChangedOffhand = true // mark as changed offhand, we will save cooldowns later
-
-		guy.TakeOffhandWeapon( OFFHAND_SPECIAL )
-		specialSaved = true // mark as special saved
-	}
-
-	// utility
-	entity antiRodeoToSave = guy.GetOffhandWeapon( OFFHAND_ANTIRODEO )
-	string antiRodeoNameToSave
-	array<string> antiRodeoModsToSave
-	bool antiRodeoSaved = false
-	if ( IsValid( antiRodeoToSave ) )
-	{
-		antiRodeoNameToSave = antiRodeoToSave.GetWeaponClassName()
-		antiRodeoModsToSave = antiRodeoToSave.GetMods()
-	}
-
-	if ( IsValid( antiRodeoToSave ) && antiRodeo != "" )
-	{
-		savedLoadout.antiRodeo = antiRodeoNameToSave
-		savedLoadout.antiRodeoMods = antiRodeoModsToSave
-		hasChangedOffhand = true // mark as changed offhand, we will save cooldowns later
-
-		guy.TakeOffhandWeapon( OFFHAND_ANTIRODEO )
-		antiRodeoSaved = true // mark as antiRodeo saved
-	}
-
-	// ordnance
-	entity ordnanceToSave = guy.GetOffhandWeapon( OFFHAND_ORDNANCE )
-	string ordnanceNameToSave
-	array<string> ordnanceModsToSave
-	bool ordnanceSaved = false
-	if ( IsValid( ordnanceToSave ) )
-	{
-		ordnanceNameToSave = ordnanceToSave.GetWeaponClassName()
-		ordnanceModsToSave = ordnanceToSave.GetMods()
-	}
-
-	if ( IsValid( ordnanceToSave ) && ordnance != "" )
-	{
-		savedLoadout.ordnance = ordnanceNameToSave
-		savedLoadout.ordnanceMods = ordnanceModsToSave
-		hasChangedOffhand = true // mark as changed offhand, we will save cooldowns later
-
-		guy.TakeOffhandWeapon( OFFHAND_ORDNANCE )
-		ordnanceSaved = true // mark as ordnance saved
-	}
-
-	// melee
-	entity meleeToSave = guy.GetOffhandWeapon( OFFHAND_MELEE )
-	string meleeNameToSave
-	array<string> meleeModsToSave
-	bool meleeSaved = false
-	if ( IsValid( meleeToSave ) )
-	{
-		meleeNameToSave = meleeToSave.GetWeaponClassName()
-		meleeModsToSave = meleeToSave.GetMods()
-	}
-
-	if ( IsValid( meleeToSave ) && melee != "" )
-	{
-		savedLoadout.melee = meleeNameToSave
-		savedLoadout.meleeMods = meleeModsToSave
-
-		guy.TakeOffhandWeapon( OFFHAND_MELEE )
-		meleeSaved = true // mark as melee saved
-	}
-
-	// core
-	entity equipmentToSave = guy.GetOffhandWeapon( OFFHAND_EQUIPMENT )
-	string equipmentNameToSave
-	array<string> equipmentModsToSave
-	bool equipmentSaved = false
-	if ( IsValid( equipmentToSave ) )
-	{
-		equipmentNameToSave = equipmentToSave.GetWeaponClassName()
-		equipmentModsToSave = equipmentToSave.GetMods()
-	}
-
-	if ( IsValid( equipmentToSave ) && equipment != "" )
-	{
-		savedLoadout.equipment = equipmentNameToSave
-		savedLoadout.equipmentMods = equipmentModsToSave
-
-		guy.TakeOffhandWeapon( OFFHAND_EQUIPMENT )
-		equipmentSaved = true // mark as equipment saved
-	}
-
-	if ( equipment != "" )
-	{
-		entity weapon = guy.GetOffhandWeapon( OFFHAND_EQUIPMENT )
-		if ( IsValid( weapon ) )
+		bool primarySaved = false
+		table<int, bool> offhandsSaved
+		// init offhand weapons data
+		for ( int i = 0; i < OFFHAND_COUNT; i++ )
 		{
-			savedLoadout.equipment = weapon.GetWeaponClassName()
-			savedLoadout.equipmentMods = weapon.GetMods()
+			savedLoadout.savedOffhandWeaponEnts[ i ] <- null
+			offhandsSaved[ i ] <- false
+		}
+
+		// FIRST we take all weapons
+		// primary weapon
+		entity primaryToSave
+		string primaryNameToSave
+		array<string> primaryModsToSave
+		array<entity> mainWeapons = guy.GetMainWeapons()
+		if ( mainWeapons.len() > 0 )
+			primaryToSave = mainWeapons[0]
+		if ( IsValid( primaryToSave ) )
+		{
+			primaryNameToSave = primaryToSave.GetWeaponClassName()
+			primaryModsToSave = primaryToSave.GetMods()
+		}
+
+		// save skin&camo for later we apply to temp weapon
+		int skinIndex = -1
+		int camoIndex = -1
+		if ( IsValid( primaryToSave ) && primary != "" )
+		{
+			savedLoadout.primary = primaryNameToSave
+			savedLoadout.primaryMods = primaryModsToSave
+			try { savedLoadout.primaryAmmo = primaryToSave.GetWeaponPrimaryClipCount() } // some weapon don't have clip so try-catch it
+			catch (ex) {}
+			savedLoadout.primarySkin = primaryToSave.GetSkin()
+			savedLoadout.primaryCamo = primaryToSave.GetCamo()
+
+			primaryToSave.Destroy() // so we can take off exact primary weapon
+			primarySaved = true // mark as primary saved
+		}
+
+		// defensive
+		entity specialToSave = guy.GetOffhandWeapon( OFFHAND_SPECIAL )
+		if ( IsValid( specialToSave ) && special != "" )
+		{
+			savedLoadout.savedOffhandWeaponEnts[ OFFHAND_SPECIAL ] = guy.TakeOffhandWeapon_NoDelete( OFFHAND_SPECIAL )
+			offhandsSaved[ OFFHAND_SPECIAL ] = true // mark as special saved
+		}
+
+		// utility
+		entity antiRodeoToSave = guy.GetOffhandWeapon( OFFHAND_ANTIRODEO )
+		if ( IsValid( antiRodeoToSave ) && antiRodeo != "" )
+		{
+			savedLoadout.savedOffhandWeaponEnts[ OFFHAND_ANTIRODEO ] = guy.TakeOffhandWeapon_NoDelete( OFFHAND_ANTIRODEO )
+			offhandsSaved[ OFFHAND_ANTIRODEO ] = true // mark as special saved
+		}
+
+		// ordnance
+		entity ordnanceToSave = guy.GetOffhandWeapon( OFFHAND_ORDNANCE )
+		if ( IsValid( ordnanceToSave ) && ordnance != "" )
+		{
+			savedLoadout.savedOffhandWeaponEnts[ OFFHAND_ORDNANCE ] = guy.TakeOffhandWeapon_NoDelete( OFFHAND_ORDNANCE )
+			offhandsSaved[ OFFHAND_ORDNANCE ] = true // mark as special saved
+		}
+
+		// melee
+		entity meleeToSave = guy.GetOffhandWeapon( OFFHAND_MELEE )
+		if ( IsValid( meleeToSave ) && melee != "" )
+		{
+			savedLoadout.savedOffhandWeaponEnts[ OFFHAND_MELEE ] = guy.TakeOffhandWeapon_NoDelete( OFFHAND_MELEE )
+			offhandsSaved[ OFFHAND_MELEE ] = true // mark as special saved
+		}
+
+		// core
+		entity equipmentToSave = guy.GetOffhandWeapon( OFFHAND_EQUIPMENT )
+		if ( IsValid( equipmentToSave ) && equipment != "" )
+		{
+			savedLoadout.savedOffhandWeaponEnts[ OFFHAND_EQUIPMENT ] = guy.TakeOffhandWeapon_NoDelete( OFFHAND_EQUIPMENT )
+			offhandsSaved[ OFFHAND_EQUIPMENT ] = true // mark as special saved
+		}
+
+		// apply new weapons after certain weapon being taken, or game might crash because of dual smart ammo weapons
+		// primary 
+		if ( primary != "" && primarySaved ) // insure we saved primary
+		{
+			entity newWeapon = guy.GiveWeapon( primary, primaryMods )
+			// also apply skin to temp weapon
+			newWeapon.SetSkin( savedLoadout.primarySkin )
+			newWeapon.SetCamo( savedLoadout.primaryCamo )
+
+			guy.SetActiveWeaponByName( primary )
+			savedLoadout.replacedPrimaryEnt = newWeapon // for later we clean up
+		}
+		// defensive
+		if ( special != "" && offhandsSaved[ OFFHAND_SPECIAL ] ) // insure we saved special
+			guy.GiveOffhandWeapon( special, OFFHAND_SPECIAL, specialMods )
+		// utility
+		if ( antiRodeo != "" && offhandsSaved[ OFFHAND_ANTIRODEO ] ) // insure we saved antiRodeo
+			guy.GiveOffhandWeapon( antiRodeo, OFFHAND_ANTIRODEO, antiRodeoMods )
+		// ordnance
+		if ( ordnance != "" && offhandsSaved[ OFFHAND_ORDNANCE ] ) // insure we saved ordnance
+			guy.GiveOffhandWeapon( ordnance, OFFHAND_ORDNANCE, ordnanceMods )
+		// melee
+		if ( melee != "" && offhandsSaved[ OFFHAND_MELEE ] ) // insure we saved melee
+			guy.GiveOffhandWeapon( melee, OFFHAND_MELEE, meleeMods )
+		// core
+		if ( equipment != "" && offhandsSaved[ OFFHAND_EQUIPMENT ] ) // insure we saved equipment
+			guy.GiveOffhandWeapon( equipment, OFFHAND_EQUIPMENT, equipmentMods )
+	}
+
+	// npc loadout saving
+	if ( guy.IsNPC() )
+	{
+		ExecutionSavedLoadout_NPC savedLoadout
+		file.titanExecutionSavedLoadout_NPC[ guy ] <- savedLoadout
+
+		// primary weapon
+		entity primaryToSave
+		string primaryNameToSave
+		array<string> primaryModsToSave
+		bool primarySaved = false
+		array<entity> mainWeapons = guy.GetMainWeapons()
+		if ( mainWeapons.len() > 0 )
+			primaryToSave = mainWeapons[0]
+		if ( IsValid( primaryToSave ) )
+		{
+			primaryNameToSave = primaryToSave.GetWeaponClassName()
+			primaryModsToSave = primaryToSave.GetMods()
+		}
+
+		if ( IsValid( primaryToSave ) && primary != "" )
+		{
+			savedLoadout.primary = primaryNameToSave
+			savedLoadout.primaryMods = primaryModsToSave
+			try { savedLoadout.primaryAmmo = primaryToSave.GetWeaponPrimaryClipCount() } // some weapon don't have clip so try-catch it
+			catch (ex) {}
+			savedLoadout.primarySkin = primaryToSave.GetSkin()
+			savedLoadout.primaryCamo = primaryToSave.GetCamo()
+
+			primaryToSave.Destroy() // so we can take off exact primary weapon
+			primarySaved = true // mark as primary saved
+		}
+
+		// defensive
+		entity specialToSave = guy.GetOffhandWeapon( OFFHAND_SPECIAL )
+		string specialNameToSave
+		array<string> specialModsToSave
+		bool specialSaved = false
+		if ( IsValid( specialToSave ) )
+		{
+			specialNameToSave = specialToSave.GetWeaponClassName()
+			specialModsToSave = specialToSave.GetMods()
+		}
+
+		if ( IsValid( specialToSave ) && special != "" )
+		{
+			savedLoadout.special = specialNameToSave
+			savedLoadout.specialMods = specialModsToSave
+
+			guy.TakeOffhandWeapon( OFFHAND_SPECIAL )
+			specialSaved = true // mark as special saved
+		}
+
+		// utility
+		entity antiRodeoToSave = guy.GetOffhandWeapon( OFFHAND_ANTIRODEO )
+		string antiRodeoNameToSave
+		array<string> antiRodeoModsToSave
+		bool antiRodeoSaved = false
+		if ( IsValid( antiRodeoToSave ) )
+		{
+			antiRodeoNameToSave = antiRodeoToSave.GetWeaponClassName()
+			antiRodeoModsToSave = antiRodeoToSave.GetMods()
+		}
+
+		if ( IsValid( antiRodeoToSave ) && antiRodeo != "" )
+		{
+			savedLoadout.antiRodeo = antiRodeoNameToSave
+			savedLoadout.antiRodeoMods = antiRodeoModsToSave
+
+			guy.TakeOffhandWeapon( OFFHAND_ANTIRODEO )
+			antiRodeoSaved = true // mark as antiRodeo saved
+		}
+
+		// ordnance
+		entity ordnanceToSave = guy.GetOffhandWeapon( OFFHAND_ORDNANCE )
+		string ordnanceNameToSave
+		array<string> ordnanceModsToSave
+		bool ordnanceSaved = false
+		if ( IsValid( ordnanceToSave ) )
+		{
+			ordnanceNameToSave = ordnanceToSave.GetWeaponClassName()
+			ordnanceModsToSave = ordnanceToSave.GetMods()
+		}
+
+		if ( IsValid( ordnanceToSave ) && ordnance != "" )
+		{
+			savedLoadout.ordnance = ordnanceNameToSave
+			savedLoadout.ordnanceMods = ordnanceModsToSave
+
+			guy.TakeOffhandWeapon( OFFHAND_ORDNANCE )
+			ordnanceSaved = true // mark as ordnance saved
+		}
+
+		// melee
+		entity meleeToSave = guy.GetOffhandWeapon( OFFHAND_MELEE )
+		string meleeNameToSave
+		array<string> meleeModsToSave
+		bool meleeSaved = false
+		if ( IsValid( meleeToSave ) )
+		{
+			meleeNameToSave = meleeToSave.GetWeaponClassName()
+			meleeModsToSave = meleeToSave.GetMods()
+		}
+
+		if ( IsValid( meleeToSave ) && melee != "" )
+		{
+			savedLoadout.melee = meleeNameToSave
+			savedLoadout.meleeMods = meleeModsToSave
+
+			guy.TakeOffhandWeapon( OFFHAND_MELEE )
+			meleeSaved = true // mark as melee saved
+		}
+
+		// core
+		entity equipmentToSave = guy.GetOffhandWeapon( OFFHAND_EQUIPMENT )
+		string equipmentNameToSave
+		array<string> equipmentModsToSave
+		bool equipmentSaved = false
+		if ( IsValid( equipmentToSave ) )
+		{
+			equipmentNameToSave = equipmentToSave.GetWeaponClassName()
+			equipmentModsToSave = equipmentToSave.GetMods()
+		}
+
+		if ( IsValid( equipmentToSave ) && equipment != "" )
+		{
+			savedLoadout.equipment = equipmentNameToSave
+			savedLoadout.equipmentMods = equipmentModsToSave
 
 			guy.TakeOffhandWeapon( OFFHAND_EQUIPMENT )
+			equipmentSaved = true // mark as equipment saved
 		}
+
+		if ( equipment != "" )
+		{
+			entity weapon = guy.GetOffhandWeapon( OFFHAND_EQUIPMENT )
+			if ( IsValid( weapon ) )
+			{
+				savedLoadout.equipment = weapon.GetWeaponClassName()
+				savedLoadout.equipmentMods = weapon.GetMods()
+
+				guy.TakeOffhandWeapon( OFFHAND_EQUIPMENT )
+			}
+		}
+
+		// apply new weapons after certain weapon being taken, or game might crash because of dual smart ammo weapons
+		// primary 
+		if ( primary != "" && primarySaved ) // insure we saved primary
+		{
+			entity newWeapon = guy.GiveWeapon( primary, primaryMods )
+			// also apply skin to temp weapon
+			newWeapon.SetSkin( savedLoadout.primarySkin )
+			newWeapon.SetCamo( savedLoadout.primaryCamo )
+			guy.SetActiveWeaponByName( primary )
+			savedLoadout.replacedPrimaryEnt = newWeapon // for later we clean up
+		}
+		// defensive
+		if ( special != "" && specialSaved ) // insure we saved special
+			guy.GiveOffhandWeapon( special, OFFHAND_SPECIAL, specialMods )
+		// utility
+		if ( antiRodeo != "" && antiRodeoSaved ) // insure we saved antiRodeo
+			guy.GiveOffhandWeapon( antiRodeo, OFFHAND_ANTIRODEO, antiRodeoMods )
+		// ordnance
+		if ( ordnance != "" && ordnanceSaved ) // insure we saved ordnance
+			guy.GiveOffhandWeapon( ordnance, OFFHAND_ORDNANCE, ordnanceMods )
+		// melee
+		if ( melee != "" && meleeSaved ) // insure we saved melee
+			guy.GiveOffhandWeapon( melee, OFFHAND_MELEE, meleeMods )
+		// core
+		if ( equipment != "" && equipmentSaved ) // insure we saved equipment
+			guy.GiveOffhandWeapon( equipment, OFFHAND_EQUIPMENT, equipmentMods )
+
+		// debug prints
+		/*
+		print( "primarySaved: " + string( primarySaved ) )
+		print( "specialSaved: " + string( specialSaved ) )
+		print( "antiRodeoSaved: " + string( antiRodeoSaved ) )
+		print( "ordnanceSaved: " + string( ordnanceSaved ) )
+		print( "meleeSaved: " + string( meleeSaved ) )
+		print( "equipmentSaved: " + string( equipmentSaved ) )
+		*/
 	}
-
-	// cooldowns
-	//print( "hasChangedOffhand: " + string( hasChangedOffhand ) )
-	if ( hasChangedOffhand && guy.IsPlayer() ) // save cooldowns for players
-		savedLoadout.offhandCooldowns = GetWeaponCooldownsForTitanLoadoutSwitch( guy ) // in _titan_loadout_switch.nut
-	
-	// apply new weapons after certain weapon being taken, or game might crash because of dual smart ammo weapons
-	// primary 
-	if ( primary != "" && primarySaved ) // insure we saved primary
-	{
-		entity newWeapon = guy.GiveWeapon( primary, primaryMods )
-		// also apply skin to temp weapon
-		newWeapon.SetSkin( savedLoadout.primarySkin )
-		newWeapon.SetCamo( savedLoadout.primaryCamo )
-		guy.SetActiveWeaponByName( primary )
-		savedLoadout.replacedPrimaryEnt = newWeapon // for later we clean up
-	}
-	// defensive
-	if ( special != "" && specialSaved ) // insure we saved special
-		guy.GiveOffhandWeapon( special, OFFHAND_SPECIAL, specialMods )
-	// utility
-	if ( antiRodeo != "" && antiRodeoSaved ) // insure we saved antiRodeo
-		guy.GiveOffhandWeapon( antiRodeo, OFFHAND_ANTIRODEO, antiRodeoMods )
-	// ordnance
-	if ( ordnance != "" && ordnanceSaved ) // insure we saved ordnance
-		guy.GiveOffhandWeapon( ordnance, OFFHAND_ORDNANCE, ordnanceMods )
-	// melee
-	if ( melee != "" && meleeSaved ) // insure we saved melee
-		guy.GiveOffhandWeapon( melee, OFFHAND_MELEE, meleeMods )
-	// core
-	if ( equipment != "" && equipmentSaved ) // insure we saved equipment
-		guy.GiveOffhandWeapon( equipment, OFFHAND_EQUIPMENT, equipmentMods )
-
-	// debug prints
-	/*
-	print( "primarySaved: " + string( primarySaved ) )
-	print( "specialSaved: " + string( specialSaved ) )
-	print( "antiRodeoSaved: " + string( antiRodeoSaved ) )
-	print( "ordnanceSaved: " + string( ordnanceSaved ) )
-	print( "meleeSaved: " + string( meleeSaved ) )
-	print( "equipmentSaved: " + string( equipmentSaved ) )
-	*/
-
-	file.titanExecutionSavedLoadout[ guy ] = savedLoadout
 
 	OnThreadEnd
 	(
@@ -505,59 +630,93 @@ void function ReplaceExecutionAttackerLoadout_Threaded( entity guy, string prima
 		{
 			if ( IsValid( guy ) )
 			{
-				ExecutionSavedLoadout savedLoadout = file.titanExecutionSavedLoadout[ guy ]
-				bool hasChangedOffhand = false
-				// restore weapons
-				// primary 
-				if ( savedLoadout.primary != "" ) // do savedast primary
+				// player loadout restoring
+				if ( guy.IsPlayer() )
 				{
-					entity replacedWeapon = savedLoadout.replacedPrimaryEnt
-					if ( IsValid( IsValid( replacedWeapon ) ) )
-						replacedWeapon.Destroy() // so we can take off exact primary weapon
-					entity newWeapon = guy.GiveWeapon( savedLoadout.primary, savedLoadout.primaryMods )
-					guy.SetActiveWeaponByName( savedLoadout.primary )
-					newWeapon.SetSkin( savedLoadout.primarySkin )
-					newWeapon.SetCamo( savedLoadout.primaryCamo )
-					try { newWeapon.SetWeaponPrimaryClipCount( savedLoadout.primaryAmmo ) } // some weapon don't have clip so try-catch it
-					catch (ex) {}
+					ExecutionSavedLoadout savedLoadout = file.titanExecutionSavedLoadout[ guy ]
+					// restore weapons
+					// primary 
+					if ( savedLoadout.primary != "" ) // do savedast primary
+					{
+						entity replacedWeapon = savedLoadout.replacedPrimaryEnt
+						if ( IsValid( replacedWeapon ) )
+							replacedWeapon.Destroy() // so we can take off exact primary weapon
+						entity newWeapon = guy.GiveWeapon( savedLoadout.primary, savedLoadout.primaryMods )
+						guy.SetActiveWeaponByName( savedLoadout.primary )
+						newWeapon.SetSkin( savedLoadout.primarySkin )
+						newWeapon.SetCamo( savedLoadout.primaryCamo )
+						RemoveInvalidModsForWeapon( newWeapon ) // remove mods that shouldn't be retained through execution
+						try { newWeapon.SetWeaponPrimaryClipCount( savedLoadout.primaryAmmo ) } // some weapon don't have clip so try-catch it
+						catch (ex) {}
+					}
+					// offhand weapons
+					for ( int i = 0; i < OFFHAND_COUNT; i++ )
+					{
+						entity previousOffhand = savedLoadout.savedOffhandWeaponEnts[ i ]
+						if ( IsValid( previousOffhand ) )
+						{
+							guy.TakeOffhandWeapon( i )
+							guy.GiveExistingOffhandWeapon( previousOffhand, i )
+							RemoveInvalidModsForWeapon( previousOffhand ) // remove mods that shouldn't be retained through execution
+						}
+					}
+
+					// restoring succeeded! delete from table
+					delete file.titanExecutionSavedLoadout[ guy ]
 				}
-				// defensive
-				if ( savedLoadout.special != "" ) // do saved defensive
+
+				// npc loadout restoring
+				if ( guy.IsNPC() )
 				{
-					guy.TakeOffhandWeapon( OFFHAND_SPECIAL )
-					guy.GiveOffhandWeapon( savedLoadout.special, OFFHAND_SPECIAL, savedLoadout.specialMods )
-					hasChangedOffhand = true // mark as changed offhand, we will apply cooldowns later
+					ExecutionSavedLoadout_NPC savedLoadout = file.titanExecutionSavedLoadout_NPC[ guy ]
+					// restore weapons
+					// primary 
+					if ( savedLoadout.primary != "" ) // do savedast primary
+					{
+						entity replacedWeapon = savedLoadout.replacedPrimaryEnt
+						if ( IsValid( replacedWeapon ) )
+							replacedWeapon.Destroy() // so we can take off exact primary weapon
+						entity newWeapon = guy.GiveWeapon( savedLoadout.primary, savedLoadout.primaryMods )
+						guy.SetActiveWeaponByName( savedLoadout.primary )
+						newWeapon.SetSkin( savedLoadout.primarySkin )
+						newWeapon.SetCamo( savedLoadout.primaryCamo )
+						try { newWeapon.SetWeaponPrimaryClipCount( savedLoadout.primaryAmmo ) } // some weapon don't have clip so try-catch it
+						catch (ex) {}
+					}
+					// defensive
+					if ( savedLoadout.special != "" ) // do saved defensive
+					{
+						guy.TakeOffhandWeapon( OFFHAND_SPECIAL )
+						guy.GiveOffhandWeapon( savedLoadout.special, OFFHAND_SPECIAL, savedLoadout.specialMods )
+					}
+					// utility
+					if ( savedLoadout.antiRodeo != "" ) // do saved utility
+					{
+						guy.TakeOffhandWeapon( OFFHAND_ANTIRODEO )
+						guy.GiveOffhandWeapon( savedLoadout.antiRodeo, OFFHAND_ANTIRODEO, savedLoadout.antiRodeoMods )
+					}
+					// ordnance
+					if ( savedLoadout.ordnance != "" ) // do saved ordnance
+					{
+						guy.TakeOffhandWeapon( OFFHAND_ORDNANCE )
+						guy.GiveOffhandWeapon( savedLoadout.ordnance, OFFHAND_ORDNANCE, savedLoadout.ordnanceMods )
+					}
+					// melee
+					if ( savedLoadout.melee != "" ) // do saved ordnance
+					{
+						guy.TakeOffhandWeapon( OFFHAND_MELEE )
+						guy.GiveOffhandWeapon( savedLoadout.melee, OFFHAND_MELEE, savedLoadout.meleeMods )
+					}
+					// core
+					if ( savedLoadout.equipment != "" ) // do saved ordnance
+					{
+						guy.TakeOffhandWeapon( OFFHAND_EQUIPMENT )
+						guy.GiveOffhandWeapon( savedLoadout.equipment, OFFHAND_EQUIPMENT, savedLoadout.equipmentMods )
+					}
+
+					// restoring succeeded! delete from table
+					delete file.titanExecutionSavedLoadout_NPC[ guy ]
 				}
-				// utility
-				if ( savedLoadout.antiRodeo != "" ) // do saved utility
-				{
-					guy.TakeOffhandWeapon( OFFHAND_ANTIRODEO )
-					guy.GiveOffhandWeapon( savedLoadout.antiRodeo, OFFHAND_ANTIRODEO, savedLoadout.antiRodeoMods )
-					hasChangedOffhand = true // mark as changed offhand, we will apply cooldowns later
-				}
-				// ordnance
-				if ( savedLoadout.ordnance != "" ) // do saved ordnance
-				{
-					guy.TakeOffhandWeapon( OFFHAND_ORDNANCE )
-					guy.GiveOffhandWeapon( savedLoadout.ordnance, OFFHAND_ORDNANCE, savedLoadout.ordnanceMods )
-					hasChangedOffhand = true // mark as changed offhand, we will apply cooldowns later
-				}
-				// melee
-				if ( savedLoadout.melee != "" ) // do saved ordnance
-				{
-					guy.TakeOffhandWeapon( OFFHAND_MELEE )
-					guy.GiveOffhandWeapon( savedLoadout.melee, OFFHAND_MELEE, savedLoadout.meleeMods )
-				}
-				// core
-				if ( savedLoadout.equipment != "" ) // do saved ordnance
-				{
-					guy.TakeOffhandWeapon( OFFHAND_EQUIPMENT )
-					guy.GiveOffhandWeapon( savedLoadout.equipment, OFFHAND_EQUIPMENT, savedLoadout.equipmentMods )
-				}
-				// cooldowns
-				//print( "hasChangedOffhand: " + string( hasChangedOffhand ) )
-				if ( hasChangedOffhand && guy.IsPlayer() ) // apply cooldowns for players
-					SetWeaponCooldownsForTitanLoadoutSwitch( guy, savedLoadout.offhandCooldowns ) // in _titan_loadout_switch.nut
 			}
 		}
 	)
@@ -590,7 +749,7 @@ bool function MeleeSyncedTitan_ExecutionRefHasCallback( string ref )
 	return false
 }
 
-void function MeleeSyncedTitan_RunCallbackForRef( string ref, entity attacker, entity target )
+void function MeleeSyncedTitan_RunCallbacksForRef( string ref, entity attacker, entity target )
 {
 	if ( !MeleeSyncedTitan_ExecutionRefHasCallback( ref ) )
 		return
@@ -624,5 +783,26 @@ void function MeleeSyncedTitan_RunLoadoutReplaceCallbackForRef( string ref, enti
 		return
 	//PrintFunc()
 	file.titanExecutionRefLoadoutReplaceCallback[ ref ]( attacker )
+}
+
+void function MeleeSyncedTitan_AddModToRemoveOnLoadoutReplace( string mod )
+{
+	if ( !file.modsToRemoveOnLoadoutReplace.contains( mod ) )
+		file.modsToRemoveOnLoadoutReplace.append( mod )
+}
+
+void function RemoveInvalidModsForWeapon( entity weapon )
+{
+	array<string> mods = weapon.GetMods()
+    array<string> replaceArray
+    foreach( string mod in mods )
+    {
+        if ( file.modsToRemoveOnLoadoutReplace.contains( mod ) ) // skip illegal mod
+            continue
+
+        replaceArray.append( mod )
+    }
+
+	weapon.SetMods( replaceArray )
 }
 #endif

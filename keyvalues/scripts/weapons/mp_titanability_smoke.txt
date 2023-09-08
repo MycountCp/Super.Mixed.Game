@@ -1,0 +1,30 @@
+WeaponData
+{
+	Mods
+	{
+		pas_defensive_core
+		{
+		}
+		trigger_stickies
+		{
+		}
+		fast_warmup
+		{
+		}
+		dev_mod_low_recharge
+		{
+		}
+		burn_mod_titan_smoke
+		{
+		}
+		npc_normal_difficulty
+		{
+		}
+
+		// adding from mp_titanability_electric_smoke
+		maelstrom
+		{
+			"hud_icon"										"rui/titan_loadout/passive/monarch_core_maelstrom"
+		}
+	}
+}

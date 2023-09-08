@@ -5,6 +5,8 @@ global function SetGameState
 global function GameState_EntitiesDidLoad
 global function WaittillGameStateOrHigher
 global function AddCallback_OnRoundEndCleanup
+// new adding
+global function AddCallback_OnMatchEndCleanup
 
 global function SetShouldUsePickLoadoutScreen
 global function SetSwitchSidesBased
@@ -69,6 +71,8 @@ struct {
 	float roundWinningKillReplayHealthFrac
 	
 	array<void functionref()> roundEndCleanupCallbacks
+	// new adding
+	array<void functionref()> matchEndCleanupCallbacks
 
 	// modified
 	float waitingForPlayersMaxDuration = 20.0
@@ -76,7 +80,7 @@ struct {
 
 	bool pickLoadoutEnable = false
 	float pickLoadoutDuration = 10.0
-	float titanSelectionMenuDuration = 20.0
+	float titanSelectionMenuDuration = 30.0
 	bool scoreEventDialogue = true
 } file
 
@@ -107,10 +111,12 @@ void function PIN_GameStart()
 	AddCallback_OnPlayerKilled( OnPlayerKilled )
 	AddDeathCallback( "npc_titan", OnTitanKilled )
 
+	RegisterSignal( "CleanUpEntitiesForRoundEnd" )
+
 	// sudden death may need this
 	AddCallback_OnClientDisconnected( OnClientDisconnected )
-	
-	RegisterSignal( "CleanUpEntitiesForRoundEnd" )
+	// new adding
+	RegisterSignal( "CleanUpEntitiesForMatchEnd" )
 }
 
 void function SetGameState( int newState )
@@ -121,7 +127,6 @@ void function SetGameState( int newState )
 	SetServerVar( "gameStateChangeTime", Time() )
 	SetServerVar( "gameState", newState )
 	svGlobal.levelEnt.Signal( "GameStateChanged" )
-	NSUpdateSQGameState(newState)
 
 	// added in AddCallback_GameStateEnter
 	foreach ( callbackFunc in svGlobal.gameStateEnterCallbacks[ newState ] )
@@ -310,9 +315,7 @@ void function GameStateEnter_Playing_Threaded()
 			else if ( file.suddenDeathBased && winningTeam == TEAM_UNASSIGNED ) // suddendeath if we draw and suddendeath is enabled and haven't switched sides
 				SetGameState( eGameState.SuddenDeath )
 			else
-			{
 				SetWinner( winningTeam, file.timeoutWinningReason, file.timeoutLosingReason )
-			}
 		}
 
 		WaitFrame()
@@ -340,26 +343,12 @@ void function GameStateEnter_WinnerDetermined_Threaded()
 	if( IsFFAGame() )
 		winningTeam = GetWinningTeamWithFFASupport()
 
-	foreach ( entity player in GetPlayerArray() )
-	{
-		int announcementSubstr
-		if ( winningTeam > TEAM_UNASSIGNED )
-			announcementSubstr = player.GetTeam() == winningTeam ? file.announceRoundWinnerWinningSubstr : file.announceRoundWinnerLosingSubstr
-		else // draw
-			announcementSubstr = GetStringID( "#GENERIC_DRAW_ANNOUNCEMENT" )
-
-		if ( IsRoundBased() )
-			Remote_CallFunction_NonReplay( player, "ServerCallback_AnnounceRoundWinner", winningTeam, announcementSubstr, ROUND_WINNING_KILL_REPLAY_SCREEN_FADE_TIME, GameRules_GetTeamScore2( TEAM_MILITIA ), GameRules_GetTeamScore2( TEAM_IMC ) )
-		else
-			Remote_CallFunction_NonReplay( player, "ServerCallback_AnnounceWinner", winningTeam, announcementSubstr, ROUND_WINNING_KILL_REPLAY_SCREEN_FADE_TIME )
-	}
-
-	// scoreEvents
+	// match ending think
 	bool isMatchEnd = true
 	// SetTeamScore() should be done after announced winner
 	if ( IsRoundBased() )
 	{
-		isMatchEnd = false // default will be false!
+		isMatchEnd = false // round based default will be false!
 		if ( winningTeam > TEAM_UNASSIGNED )
 		{
 			GameRules_SetTeamScore( winningTeam, GameRules_GetTeamScore( winningTeam ) + 1 )
@@ -372,12 +361,24 @@ void function GameStateEnter_WinnerDetermined_Threaded()
 				isMatchEnd = true
 		}
 	}
+
+	foreach ( entity player in GetPlayerArray() )
+	{
+		int announcementSubstr
+		if ( winningTeam > TEAM_UNASSIGNED )
+			announcementSubstr = player.GetTeam() == winningTeam ? file.announceRoundWinnerWinningSubstr : file.announceRoundWinnerLosingSubstr
+		else // draw
+			announcementSubstr = GetStringID( "#GENERIC_DRAW_ANNOUNCEMENT" )
+
+		if ( !isMatchEnd && IsRoundBased() ) // round based will do winner announcement if match ends
+			Remote_CallFunction_NonReplay( player, "ServerCallback_AnnounceRoundWinner", winningTeam, announcementSubstr, ROUND_WINNING_KILL_REPLAY_SCREEN_FADE_TIME, GameRules_GetTeamScore2( TEAM_MILITIA ), GameRules_GetTeamScore2( TEAM_IMC ) )
+		else
+			Remote_CallFunction_NonReplay( player, "ServerCallback_AnnounceWinner", winningTeam, announcementSubstr, ROUND_WINNING_KILL_REPLAY_SCREEN_FADE_TIME )
+	}
 	
-	if ( isMatchEnd )
-		AddScoreForMatchWinning( "MatchVictory", "MatchComplete", winningTeam ) // use this winningTeam to get current winner!
-	else
-		AddScoreForMatchWinning( "RoundVictory", "RoundComplete", winningTeam )
-	
+	// add score for match end
+	// shared from _score.nut
+	ScoreEvent_MatchComplete( winningTeam, isMatchEnd )
 	
 	WaitFrame() // wait a frame so other scripts can setup killreplay stuff
 
@@ -390,8 +391,13 @@ void function GameStateEnter_WinnerDetermined_Threaded()
 
 	entity replayAttacker = file.roundWinningKillReplayAttacker
 	entity replayVictim = file.roundWinningKillReplayVictim
-	bool doReplay = Replay_IsEnabled() && IsRoundWinningKillReplayEnabled() && IsValid( replayAttacker ) && !ClassicMP_ShouldRunEpilogue()
-				 && Time() - file.roundWinningKillReplayTime <= ROUND_WINNING_KILL_REPLAY_LENGTH_OF_REPLAY && winningTeam != TEAM_UNASSIGNED
+
+	bool doReplay = Replay_IsEnabled() 
+					&& IsRoundWinningKillReplayEnabled() 
+					&& IsValid( replayAttacker )
+					&& !ClassicMP_ShouldRunEpilogue()
+					&& Time() - file.roundWinningKillReplayTime <= ROUND_WINNING_KILL_REPLAY_LENGTH_OF_REPLAY 
+					&& winningTeam != TEAM_UNASSIGNED
 
 	//print( "doReplay: " + string( doReplay ) )
 	float replayLength = 2.0 // extra delay if no replay
@@ -404,8 +410,14 @@ void function GameStateEnter_WinnerDetermined_Threaded()
 		replayLength = ROUND_WINNING_KILL_REPLAY_LENGTH_OF_REPLAY
 		if( IsValid( replayAttacker ) )
 		{
-			if ( "respawnTime" in replayAttacker.s && Time() - replayAttacker.s.respawnTime < replayLength )
-				replayLength += Time() - expect float ( replayAttacker.s.respawnTime )
+			float attackerSpawnTime = Time()
+			if ( replayAttacker.IsPlayer() && "respawnTime" in replayAttacker.s ) // player
+				attackerSpawnTime = expect float ( replayAttacker.s.respawnTime )
+			else if ( replayAttacker.IsNPC() ) // npc
+				attackerSpawnTime = replayAttacker.ai.spawnTime
+
+			if ( Time() - attackerSpawnTime < replayLength )
+				replayLength += Time() - attackerSpawnTime
 		}
 
 		if( replayLength <= 0 ) // defensive fix
@@ -415,14 +427,17 @@ void function GameStateEnter_WinnerDetermined_Threaded()
 
 		// fix for projectile kill replay
 		int inflictorEHandle = file.roundWinningKillReplayInflictorEhandle
+		// get attacker before it gets destroyed, for later checks
+		int attackerEhandle = replayAttacker.GetEncodedEHandle()
 		
+		//print( "replayLength: " + string( replayLength ) )
 		foreach ( entity player in GetPlayerArray() )
 			thread PlayerWatchesRoundWinningKillReplay( player, inflictorEHandle, replayAttacker, replayVictim, replayLength ) // pass attacker and victim to replay function
 
 		// all waits below should be the same time as PlayerWatchesRoundWinningKillReplay() does
 		wait ROUND_WINNING_KILL_REPLAY_SCREEN_FADE_TIME
 
-		if( IsValid( replayAttacker ) ) // if attacker not valid, it means replay can't be played, maybe wait shorter
+		if( attackerEhandle != -1 ) // if attacker ehandle is valid, it means replay played, maybe wait shorter
 		{	
 			wait GAME_POSTROUND_CLEANUP_WAIT // to have better visual and do a extra wait
 			
@@ -449,7 +464,7 @@ void function GameStateEnter_WinnerDetermined_Threaded()
 		if ( killcamsWereEnabled ) // reset last
 			SetKillcamsEnabled( true )
 	}
-	else if ( IsRoundBased() ) // no replay roundBased
+	else if ( IsRoundBased() && !isMatchEnd ) // no replay roundBased, match not ending yet
 	{
 		// these numbers are temp and should really be based on consts of some kind
 		foreach( entity player in GetPlayerArray() )
@@ -518,28 +533,21 @@ void function GameStateEnter_WinnerDetermined_Threaded()
 	}
 }
 
-void function AddScoreForMatchWinning( string winScoreEvent, string loseScoreEvent, int winningTeam )
-{
-	array<entity> otherPlayers = GetPlayerArray()
-	foreach( entity winningPlayer in GetPlayerArrayOfTeam( winningTeam ) )
-	{
-		AddPlayerScore( winningPlayer, winScoreEvent )
-		otherPlayers.removebyvalue( winningPlayer )
-	}
-	foreach( entity otherPlayer in otherPlayers )
-		AddPlayerScore( otherPlayer, loseScoreEvent )
-}
-
 void function PlayerWatchesRoundWinningKillReplay( entity player, int inflictorEHandle, entity replayAttacker, entity replayVictim, float replayLength )
 {
 	// end if player dcs 
 	player.EndSignal( "OnDestroy" )
-	
+
+	// get attacker stuffs before it gets destroyed
+	int attackerEhandle = replayAttacker.GetEncodedEHandle()
+	int attackerIndex = replayAttacker.GetIndexForEntity()
+	// setup here before victim gets destroyed
+	if ( IsValid( replayVictim ) ) // victim can be invalid if we're only using attacker view
+		player.SetKillReplayVictim( replayVictim )
+
 	player.FreezeControlsOnServer()
 	ScreenFadeToBlackForever( player, ROUND_WINNING_KILL_REPLAY_SCREEN_FADE_TIME )
 	wait ROUND_WINNING_KILL_REPLAY_SCREEN_FADE_TIME
-	
-	player.SetPredictionEnabled( false ) // prediction fucks with replays
 	
 	// don't get attacker here which has been delayed! pass from GameStateEnter_WinnerDetermined_Threaded()
 	//entity attacker = file.roundWinningKillReplayAttacker
@@ -547,18 +555,19 @@ void function PlayerWatchesRoundWinningKillReplay( entity player, int inflictorE
 
 	//player.SetKillReplayDelay( Time() - replayLength, THIRD_PERSON_KILL_REPLAY_ALWAYS )
 	float totalTime = replayLength + GAME_POSTROUND_CLEANUP_WAIT
-	if( IsValid( replayAttacker ) )
+	if( attackerEhandle != -1 )
 	{
+		//player.SetPredictionEnabled( false ) // prediction fucks with replays
+		player.SetPredictionEnabled( true ) // should we enable prediction on killreplay?
+
 		float replayDelay = Time() - totalTime
 		if( replayDelay <= 0 )
 			replayDelay = 0
 		player.SetKillReplayDelay( replayDelay, THIRD_PERSON_KILL_REPLAY_ALWAYS )
 		if ( inflictorEHandle == -1 ) // invalid ehandle!
-			inflictorEHandle = replayAttacker.GetEncodedEHandle() // just assign attacker as inflictor!
+			inflictorEHandle = attackerEhandle // just assign attacker as inflictor!
 		player.SetKillReplayInflictorEHandle( inflictorEHandle )
-		if( IsValid( replayVictim ) ) // here has been delayed, should do a IsValid() check
-			player.SetKillReplayVictim( replayVictim )
-		player.SetViewIndex( replayAttacker.GetIndexForEntity() )
+		player.SetViewIndex( attackerIndex )
 		player.SetIsReplayRoundWinning( true )
 
 		// do a fade if replay is played
@@ -593,23 +602,41 @@ void function GameStateEnter_SwitchingSides_Threaded()
 
 	entity replayAttacker = file.roundWinningKillReplayAttacker
 	entity replayVictim = file.roundWinningKillReplayVictim
-	bool doReplay = Replay_IsEnabled() && IsRoundWinningKillReplayEnabled() && IsValid( replayAttacker ) && !IsRoundBased() // for roundbased modes, we've already done the replay
-				 && Time() - file.roundWinningKillReplayTime <= SWITCHING_SIDES_DELAY
+
+	bool doReplay = Replay_IsEnabled() 
+					&& IsRoundWinningKillReplayEnabled() 
+					&& IsValid( replayAttacker )
+					&& !IsRoundBased() // for roundbased modes, we've already done the replay
+					&& Time() - file.roundWinningKillReplayTime <= SWITCHING_SIDES_DELAY
 	
 	float replayLength = 2.0 // extra delay if no replay
-	// fix for projectile kill replay
-	int inflictorEHandle = file.roundWinningKillReplayInflictorEhandle
+
+	int inflictorEHandle = -1
+	int attackerEhandle = -1
 	if ( doReplay )
 	{		
 		replayLength = ROUND_WINNING_KILL_REPLAY_LENGTH_OF_REPLAY
 
 		if( IsValid( replayAttacker ) )
-			if ( "respawnTime" in replayAttacker.s && Time() - replayAttacker.s.respawnTime < replayLength )
-				replayLength += Time() - expect float ( replayAttacker.s.respawnTime )
+		{
+			float attackerSpawnTime = Time()
+			if ( replayAttacker.IsPlayer() && "respawnTime" in replayAttacker.s ) // player
+				attackerSpawnTime = expect float ( replayAttacker.s.respawnTime )
+			else if ( replayAttacker.IsNPC() ) // npc
+				attackerSpawnTime = replayAttacker.ai.spawnTime
+
+			if ( Time() - attackerSpawnTime < replayLength )
+				replayLength += Time() - attackerSpawnTime
+		}
 
 		if( replayLength <= 0 ) // defensive fix
 			replayLength = 2.0 // extra delay
-			
+
+		// fix for projectile kill replay
+		int inflictorEHandle = file.roundWinningKillReplayInflictorEhandle
+		// get attacker before it gets destroyed, for later checks
+		int attackerEhandle = replayAttacker.GetEncodedEHandle()
+
 		SetServerVar( "roundWinningKillReplayEntHealthFrac", file.roundWinningKillReplayHealthFrac )
 	}
 
@@ -618,7 +645,7 @@ void function GameStateEnter_SwitchingSides_Threaded()
 
 	wait ROUND_WINNING_KILL_REPLAY_SCREEN_FADE_TIME // whatever we do, just wait here
 
-	bool replaySuccess = doReplay && IsValid( replayAttacker )
+	bool replaySuccess = doReplay && attackerEhandle != -1
 	if( replaySuccess ) // do a same cauculate as replay's
 		wait replayLength
 	else
@@ -647,18 +674,27 @@ void function GameStateEnter_SwitchingSides_Threaded()
 		SetGameState ( eGameState.Prematch )
 }
 
+// why do we ever need to split this function from roundwinning kill replay?
+// need to rework on it
 void function PlayerWatchesSwitchingSidesKillReplay( entity player, int inflictorEHandle, entity replayAttacker, entity replayVictim, bool doReplay, float replayLength ) // ( entity player, float replayLength )
 {
 	player.EndSignal( "OnDestroy" )
 	player.FreezeControlsOnServer()
 
-	ScreenFadeToBlackForever( player, ROUND_WINNING_KILL_REPLAY_SCREEN_FADE_TIME ) // automatically cleared 
-	wait ROUND_WINNING_KILL_REPLAY_SCREEN_FADE_TIME
-	
-	//if ( doReplay )
-	if( doReplay && IsValid( replayAttacker ) ) // should do this
+	if( doReplay )
 	{
-		player.SetPredictionEnabled( false ) // prediction fucks with replays
+		// get index before attacker gets destroyed
+		int attackerEhandle = replayAttacker.GetEncodedEHandle()
+		int attackerIndex = replayAttacker.GetIndexForEntity()
+		// setup victim before it gets destroyed
+		if ( IsValid( replayVictim ) ) // victim can be invalid if we're only using attacker view
+			player.SetKillReplayVictim( replayVictim )
+
+		ScreenFadeToBlackForever( player, ROUND_WINNING_KILL_REPLAY_SCREEN_FADE_TIME ) // automatically cleared 
+		wait ROUND_WINNING_KILL_REPLAY_SCREEN_FADE_TIME
+	
+		//player.SetPredictionEnabled( false ) // prediction fucks with replays
+		player.SetPredictionEnabled( true ) // should we enable prediction on killreplay?
 	
 		// delay seems weird for switchingsides? ends literally the frame the flag is collected
 
@@ -673,11 +709,9 @@ void function PlayerWatchesSwitchingSidesKillReplay( entity player, int inflicto
 		//player.SetKillReplayDelay( Time() - replayLength, THIRD_PERSON_KILL_REPLAY_ALWAYS )
 		player.SetKillReplayDelay( replayDelay, THIRD_PERSON_KILL_REPLAY_ALWAYS )
 		if ( inflictorEHandle == -1 ) // invalid ehandle!
-			inflictorEHandle = replayAttacker.GetEncodedEHandle() // just assign attacker as inflictor!
+			inflictorEHandle = attackerEhandle // just assign attacker as inflictor!
 		player.SetKillReplayInflictorEHandle( inflictorEHandle )
-		if( IsValid( replayVictim ) ) // here has been delayed, should do a IsValid() check
-			player.SetKillReplayVictim( replayVictim )
-		player.SetViewIndex( replayAttacker.GetIndexForEntity() )
+		player.SetViewIndex( attackerIndex )
 		player.SetIsReplayRoundWinning( true )
 		
 		float finalWait = replayLength - 2.0
@@ -690,8 +724,13 @@ void function PlayerWatchesSwitchingSidesKillReplay( entity player, int inflicto
 
 		wait GAME_POSTROUND_CLEANUP_WAIT // bit nicer to match GameStateEnter_SwitchingSides_Threaded() does
 	}
-	else
+	else // no replay valid
+	{
+		ScreenFadeToBlackForever( player, ROUND_WINNING_KILL_REPLAY_SCREEN_FADE_TIME ) // automatically cleared 
+		wait ROUND_WINNING_KILL_REPLAY_SCREEN_FADE_TIME
+
 		wait SWITCHING_SIDES_DELAY // extra delay if no replay
+	}
 	
 	//player.SetPredictionEnabled( true ) doesn't seem needed, as native code seems to set this on respawn
 	//player.ClearReplayDelay() // these has been done in CPlayer::RespawnPlayer()
@@ -970,9 +1009,16 @@ void function AddCallback_OnRoundEndCleanup( void functionref() callback )
 	file.roundEndCleanupCallbacks.append( callback )
 }
 
+// new adding
+void function AddCallback_OnMatchEndCleanup( void functionref() callback )
+{
+	file.matchEndCleanupCallbacks.append( callback )
+}
+
 void function CleanUpEntitiesForRoundEnd()
 {
 	// this function should clean up any and all entities that need to be removed between rounds, ideally at a point where it isn't noticable to players
+	bool deathsIsHidden = IsPlayerDeathsHidden() // new adding function
 	SetPlayerDeathsHidden( true ) // hide death sounds and such so people won't notice they're dying
 	
 	foreach ( entity player in GetPlayerArray() )
@@ -990,36 +1036,37 @@ void function CleanUpEntitiesForRoundEnd()
 	foreach ( entity npc in GetNPCArray() )
 	{
 		if ( !IsValid( npc ) || !IsAlive( npc ) )
-			continue
+			continue	
 		// kill rather than destroy, as destroying will cause issues with children which is an issue especially for dropships and titans
+		// this also happens when npc.BecomeRagdoll() as ragdoll a npc meaning destroy them on server
+		npc.e.forceRagdollDeath = true // proper way to make a npc become ragdoll on death, handled by HandleDeathPackage()
 		npc.Die( svGlobal.worldspawn, svGlobal.worldspawn, { damageSourceId = eDamageSourceId.round_end } )
 	}
 	
 	// destroy weapons
 	ClearDroppedWeapons()
-		
+	
+	// clean up batteries
 	foreach ( entity battery in GetEntArrayByClass_Expensive( "item_titan_battery" ) )
 		battery.Destroy()
 	
 	// allow other scripts to clean stuff up too
 	svGlobal.levelEnt.Signal( "CleanUpEntitiesForRoundEnd" ) 
+	// Added via AddCallback_OnRoundEndCleanup()
 	foreach ( void functionref() callback in file.roundEndCleanupCallbacks )
 		callback()
 	
-	SetPlayerDeathsHidden( false )
+	//SetPlayerDeathsHidden( false )
+	SetPlayerDeathsHidden( deathsIsHidden ) // restore death hidden effect
 }
 
-// don't let players die if there're not roundbased!
 void function CleanUpEntitiesForMatchEnd()
 {
-	// this function should clean up any and all entities that need to be removed between rounds, ideally at a point where it isn't noticable to players
-	SetPlayerDeathsHidden( true ) // hide death sounds and such so people won't notice they're dying
-	
+	// don't let players die if we're not roundbased! showing a better scoreboard
 	foreach ( entity player in GetPlayerArray() )
 	{
 		ClearTitanAvailable( player )
 		PROTO_CleanupTrackedProjectiles( player )
-		player.SetPlayerNetInt( "batteryCount", 0 ) 
 	}
 
 	foreach ( entity npc in GetNPCArray() )
@@ -1027,18 +1074,22 @@ void function CleanUpEntitiesForMatchEnd()
 		if ( !IsValid( npc ) || !IsAlive( npc ) )
 			continue
 		// kill rather than destroy, as destroying will cause issues with children which is an issue especially for dropships and titans
+		// this also happens when npc.BecomeRagdoll() as ragdoll a npc meaning destroy them on server
+		npc.e.forceRagdollDeath = true // proper way to make a npc become ragdoll on death, handled by HandleDeathPackage()
 		npc.Die( svGlobal.worldspawn, svGlobal.worldspawn, { damageSourceId = eDamageSourceId.round_end } )
 	}
 	
 	// destroy weapons
 	ClearDroppedWeapons()
-		
+	
+	// clean up batteries
 	foreach ( entity battery in GetEntArrayByClass_Expensive( "item_titan_battery" ) )
 		battery.Destroy()
 	
 	// allow other scripts to clean stuff up too
-	svGlobal.levelEnt.Signal( "CleanUpEntitiesForRoundEnd" ) 
-	foreach ( void functionref() callback in file.roundEndCleanupCallbacks )
+	svGlobal.levelEnt.Signal( "CleanUpEntitiesForMatchEnd" )
+	// Added via AddCallback_OnMatchEndCleanup()
+	foreach ( void functionref() callback in file.matchEndCleanupCallbacks )
 		callback()
 }
 
@@ -1176,10 +1227,16 @@ void function AddTeamScore( int team, int amount )
 
 	//int score = GameRules_GetTeamScore( team ) // moved up to make use of it
 	score = GameRules_GetTeamScore( team ) // update score earned
-	if ( score >= scoreLimit || GetGameState() == eGameState.SuddenDeath )
+
+	if ( score >= scoreLimit ) // score limit reached!
+	{
+		if ( file.switchSidesBased && !file.hasSwitchedSides )
+			SetGameState( eGameState.SwitchingSides )
+		else // default
+			SetWinner( team, "#GAMEMODE_SCORE_LIMIT_REACHED", "#GAMEMODE_SCORE_LIMIT_REACHED" )
+	}
+	else if ( GetGameState() == eGameState.SuddenDeath ) // in sudden death, game ends when a team earns score
 		SetWinner( team, "#GAMEMODE_SCORE_LIMIT_REACHED", "#GAMEMODE_SCORE_LIMIT_REACHED" )
-	else if ( ( file.switchSidesBased && !file.hasSwitchedSides ) && score >= ( scoreLimit.tofloat() / 2.0 ) )
-		SetGameState( eGameState.SwitchingSides )
 }
 
 void function SetTimeoutWinnerDecisionFunc( int functionref() callback )

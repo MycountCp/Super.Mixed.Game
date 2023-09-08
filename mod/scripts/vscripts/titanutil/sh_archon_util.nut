@@ -14,11 +14,7 @@ void function Archon_Init()
 	MpTitanweaponChargeBall_Init()
 	MpTitanAbilityArcPylon_Init()
 	MpTitanWeaponStormWave_Init()
-	
-	//prevent player earning coremeter by emp core 
-	#if SERVER
-		GameModeRulesRegisterTimerCreditException( eDamageSourceId.mp_titancore_emp )
-	#endif
+	MpTitanweaponStormBall_Init()
 }
 
 vector function ApplyVectorSpread_Archon( vector vecShotDirection, float spreadDegrees, float bias = 1.0 )

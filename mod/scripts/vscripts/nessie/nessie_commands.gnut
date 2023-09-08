@@ -1,10 +1,13 @@
 global function Nessie_Useful_Commands_Init
 
-global function NessieCommands_EnableSuicide
+global function NessieCommands_EnableKillCommands
+global function NessieCommands_EnableUtilCommands // weapon drop stuffs
 
 struct
 {
 	bool killCommandsEnabled
+	bool utilCommandsEnabled
+
 	table<entity, float> playerNextKillCommandAllowedTime
 	table<entity, bool> playerGainSpecialLoadout
 } file
@@ -12,6 +15,8 @@ struct
 // BATTERY_SPAWNERS array in nessy.gnut controls availability
 void function Nessie_Useful_Commands_Init()
 {
+	// custom suicide damagesource
+	RegisterWeaponDamageSource( "farewell_cruel_world", "Farewell World" )
 	// overrides northstar default killcommand
 	AddClientCommandCallback( "kill", SelfKillCommand )
 	AddClientCommandCallback( "explode", SelfExplodeCommand )
@@ -23,12 +28,9 @@ void function Nessie_Useful_Commands_Init()
 	AddClientCommandCallback( "kill_admin", AdminSelfKill )
 	AddClientCommandCallback( "explode_admin", AdminSelfExplode )
 
-    //AddClientCommandCallback( "suicide", OPSuicide )
 	AddClientCommandCallback( "dropweapon", PlayerDropActiveWeapon )
 	AddClientCommandCallback( "selfdamage", OPSelfDamage )
 	AddClientCommandCallback( "selfgib", OPSelfGib )
-	//AddClientCommandCallback( "doomedtitan", CC_SpawnDoomedTitan )
-	//AddClientCommandCallback( "doomedpilottitan", CC_SpawnDoomedPilotTitan )
 	AddClientCommandCallback( "special", CC_GiveSpecialLoadout )
 
 	// callbacks
@@ -37,9 +39,14 @@ void function Nessie_Useful_Commands_Init()
 	AddCallback_OnPlayerGetsNewPilotLoadout( OnPlayerChangeLoadout )
 }
 
-void function NessieCommands_EnableSuicide( bool enable )
+void function NessieCommands_EnableKillCommands( bool enable )
 {
 	file.killCommandsEnabled = enable
+}
+
+void function NessieCommands_EnableUtilCommands( bool enable )
+{
+	file.utilCommandsEnabled = enable
 }
 
 void function OnClientConnected( entity player )
@@ -62,86 +69,6 @@ void function OnPlayerChangeLoadout( entity player, PilotLoadoutDef p )
 		GivePlayerSpecialLoadout( player )
 }
 
-bool function SelfKillCommand( entity player, array<string> args )
-{
-	if ( !PlayerCanUseKillCommand( player ) )
-		return true
-
-	int damageTypes
-	if ( args.len() > 0 )
-	{
-		switch ( args[0] )
-		{
-			case "instant":
-				damageTypes = DF_INSTANT
-				break
-			case "knockback":
-				damageTypes = DF_KNOCK_BACK
-				break
-		}
-	}
-
-	player.Die( player, player, { damageSourceId = damagedef_suicide, scriptType = damageTypes } )
-	print( "[NESSIE] " + player.GetPlayerName() + " suicided!!" )
-
-	KillCommandPlayerScorePunish( player )
-
-	return true
-}
-
-bool function SelfExplodeCommand( entity player, array<string> args )
-{
-	if ( !PlayerCanUseKillCommand( player ) )
-		return true
-
-	player.Die( player, player, { scriptType = DF_GIB, damageSourceId = damagedef_suicide } )
-	print( "[NESSIE] " + player.GetPlayerName() + " self exploded!!" )
-
-	KillCommandPlayerScorePunish( player )
-
-	return true
-}
-
-bool function SelfDissolveCommand( entity player, array<string> args )
-{
-	if ( !PlayerCanUseKillCommand( player ) )
-		return true
-
-	player.Die( player, player, { scriptType = DF_DISSOLVE, damageSourceId = damagedef_suicide } )
-	print( "[NESSIE] " + player.GetPlayerName() + " self dissolved!!" )
-
-	KillCommandPlayerScorePunish( player )
-
-	return true
-}
-
-bool function SelfPinkMistCommand( entity player, array<string> args )
-{
-	if ( !PlayerCanUseKillCommand( player ) )
-		return true
-
-	player.Die( player, player, { scriptType = DF_DISSOLVE | DF_GIB, damageSourceId = damagedef_suicide } )
-	print( "[NESSIE] " + player.GetPlayerName() + " self pinkmisted!!" )
-
-	KillCommandPlayerScorePunish( player )
-
-	return true
-}
-
-bool function SelfRagdollDeathCommand( entity player, array<string> args )
-{
-	if ( !PlayerCanUseKillCommand( player ) )
-		return true
-
-	player.Die( player, player, { scriptType = DF_RAGDOLL | DF_KNOCK_BACK, damageSourceId = damagedef_suicide } )
-	//player.BecomeRagdoll( player.GetVelocity(), true )
-	print( "[NESSIE] " + player.GetPlayerName() + " self ragdolled!!" )
-
-	KillCommandPlayerScorePunish( player )
-
-	return true
-}
-
 bool function PlayerCanUseKillCommand( entity player )
 {
 	if ( !IsAlive( player ) )
@@ -150,7 +77,7 @@ bool function PlayerCanUseKillCommand( entity player )
 	if ( GetConVarBool( "sv_cheats" ) || GetConVarBool( "ns_allow_kill_commands" ) )
 		return true // convar killcommand toggle ignore modified checks
 
-	if ( !file.killCommandsEnabled ) // using script killcommand toggle!
+	if ( !file.killCommandsEnabled ) // not using script killcommand toggle!
 		return false
 
 	if ( Time() < file.playerNextKillCommandAllowedTime[ player ] ) // in cooldown!
@@ -186,6 +113,114 @@ void function KillCommandPlayerScorePunish( entity player )
 	}
 }
 
+bool function SelfKillCommand( entity player, array<string> args )
+{
+	if ( !PlayerCanUseKillCommand( player ) )
+		return true
+
+	int damageTypes
+	if ( args.len() > 0 )
+	{
+		switch ( args[0] )
+		{
+			case "instant":
+				damageTypes = DF_INSTANT
+				break
+			case "knockback":
+				damageTypes = DF_KNOCK_BACK
+				break
+		}
+	}
+
+	player.Die( player, player, { damageSourceId = eDamageSourceId.farewell_cruel_world, scriptType = damageTypes } )
+	print( "[NESSIE] " + player.GetPlayerName() + " suicided!!" )
+
+	KillCommandPlayerScorePunish( player )
+
+	return true
+}
+
+bool function SelfExplodeCommand( entity player, array<string> args )
+{
+	if ( !PlayerCanUseKillCommand( player ) )
+		return true
+
+	player.Die( player, player, { damageSourceId = eDamageSourceId.farewell_cruel_world } )
+	print( "[NESSIE] " + player.GetPlayerName() + " self exploded!!" )
+
+	// gib effect
+	player.Gib( player.GetVelocity() )
+	if ( !player.IsMechanical() )
+		EmitSoundAtPosition( TEAM_UNASSIGNED, player.GetOrigin(), "death.pinkmist" )
+
+	KillCommandPlayerScorePunish( player )
+
+	return true
+}
+
+bool function SelfDissolveCommand( entity player, array<string> args )
+{
+	if ( !PlayerCanUseKillCommand( player ) )
+		return true
+
+	player.Die( player, player, { damageSourceId = eDamageSourceId.farewell_cruel_world } )
+	print( "[NESSIE] " + player.GetPlayerName() + " self dissolved!!" )
+	thread DelayedDissolvePlayer( player, ENTITY_DISSOLVE_CHAR )
+
+	KillCommandPlayerScorePunish( player )
+
+	return true
+}
+
+void function DelayedDissolvePlayer( entity player, int dissovleType )
+{
+	WaitFrame() // wait for next frame so we don't mess up ragdolls( seems can't fix )
+
+	if ( IsValid( player ) && !IsAlive( player ) )
+	{
+		player.Dissolve( dissovleType, Vector( 0, 0, 0 ), 500 )
+		EmitSoundAtPosition( TEAM_UNASSIGNED, player.GetOrigin(), "Object_Dissolve" )
+	}
+}
+
+bool function SelfPinkMistCommand( entity player, array<string> args )
+{
+	if ( !PlayerCanUseKillCommand( player ) )
+		return true
+
+	player.Die( player, player, { scriptType = DF_DISSOLVE | DF_GIB, damageSourceId = eDamageSourceId.farewell_cruel_world } )
+	print( "[NESSIE] " + player.GetPlayerName() + " self pinkmisted!!" )
+
+	KillCommandPlayerScorePunish( player )
+
+	return true
+}
+
+bool function SelfRagdollDeathCommand( entity player, array<string> args )
+{
+	if ( !PlayerCanUseKillCommand( player ) )
+		return true
+
+	player.Die( player, player, { damageSourceId = eDamageSourceId.farewell_cruel_world } )
+	// ragdoll death better play 1 frame of death animation before actually become ragdoll
+	thread DelayedRagdollPlayer( player )
+	print( "[NESSIE] " + player.GetPlayerName() + " self ragdolled!!" )
+
+	KillCommandPlayerScorePunish( player )
+
+	return true
+}
+
+void function DelayedRagdollPlayer( entity player )
+{
+	vector ragdollVel = player.GetVelocity() * 5 // add a bit velocity so ragdoll can fly
+	player.EndSignal( "OnDestroy" )
+
+	WaitFrame() // wait so we don't mess up client prediction
+	if ( !IsAlive( player ) )
+		player.BecomeRagdoll( ragdollVel, false )
+}
+
 bool function AdminSelfKill( entity player, array<string> args )
 {
 	if( !BATTERY_SPAWNERS.contains( player.GetUID() ) )
@@ -195,7 +230,23 @@ bool function AdminSelfKill( entity player, array<string> args )
 		return true
 
 	thread AdminHiddenDeathThink( player )
-	player.Die( player, player )
+
+	int damageTypes
+	if ( args.len() > 0 )
+	{
+		switch ( args[0] )
+		{
+			case "instant":
+				damageTypes = DF_INSTANT
+				break
+			case "knockback":
+				damageTypes = DF_KNOCK_BACK
+				break
+		}
+	}
+
+	player.Die( player, player, { damageSourceId = damagedef_suicide, scriptType = damageTypes } )
+	
 	return true
 }
 
@@ -208,7 +259,13 @@ bool function AdminSelfExplode( entity player, array<string> args )
 		return true
 
 	thread AdminHiddenDeathThink( player )
-	player.Die( player, player, { scriptType = DF_GIB } )
+	player.Die( player, player, { damageSourceId = damagedef_suicide } )
+
+	// gib effect
+	player.Gib( player.GetVelocity() )
+	if ( !player.IsMechanical() )
+		EmitSoundAtPosition( TEAM_UNASSIGNED, player.GetOrigin(), "death.pinkmist" )
+
 	return true
 }
 
@@ -226,26 +283,28 @@ void function AdminHiddenDeathThink( entity player )
 	EntityKilledEvent_SetDisabledForEntity( player, false )
 }
 
-bool function OPSuicide( entity player, array<string> args )
+bool function PlayerCanUseUtilityCommand( entity player )
 {
-	if( !BATTERY_SPAWNERS.contains( player.GetUID() ) )
+	if ( !IsAlive( player ) )
 		return false
-	if ( GetGameState() < eGameState.Playing ) // suicide only allowed after game start!
-		return true
 
-	if( IsAlive( player ) )
-	{
-		//player.Die( svGlobal.worldspawn, svGlobal.worldspawn, { damageSourceId = damagedef_suicide } )
-		player.Die( player, player, { damageSourceId = eDamageSourceId.round_end } )
-	}
+	if ( GetConVarBool( "sv_cheats" ) || GetConVarBool( "ns_allow_kill_commands" ) )
+		return true // convar killcommand toggle ignore modified checks
 
-	print( "[NESSIE] Admin " + player.GetPlayerName() + " killed themselves!" )
-	
+	if ( !file.utilCommandsEnabled ) // not using script killcommand toggle!
+		return false
+
+	// all checks passed
 	return true
 }
 
 bool function PlayerDropActiveWeapon( entity player, array<string> args )
 {
+	if ( !PlayerCanUseUtilityCommand( player ) ) // main check
+		return false // tell player there's no such command
+
+	if ( player.IsTitan() ) // ttf2 titan shouldn't drop any weapon!
+		return true
 	entity activeWeapon = player.GetActiveWeapon()
 	if( !IsValid( activeWeapon ) )
 		return true
@@ -256,7 +315,7 @@ bool function PlayerDropActiveWeapon( entity player, array<string> args )
 	player.DropWeapon( activeWeapon )
 	print( "[NESSIE] " + player.GetPlayerName() + " dropped weapon!" )
 	// player has no weapon! want to give them a emptyhand!
-	if ( !player.IsTitan() && player.GetMainWeapons().len() == 0 )
+	if ( player.GetMainWeapons().len() == 0 )
 		thread PlayerEmptyHandThink( player )
 	return true
 }
@@ -321,7 +380,7 @@ bool function OPSelfDamage( entity player, array<string> args )
     if( IsAlive( player ) )
 	{
 		// don't add "damageSourceId = damagedef_suicide", it's a kind of force kill!
-        player.TakeDamage( 10000, player, player, {} ) 
+        player.TakeDamage( 10000, player, player, { damageSourceId = eDamageSourceId.farewell_cruel_world } ) 
 		print( "[NESSIE] Admin " + player.GetPlayerName() + " self damaged!" )
 	}
     return true
@@ -335,57 +394,9 @@ bool function OPSelfGib( entity player, array<string> args )
 	{
 		// don't add "damageSourceId = damagedef_suicide", it's a kind of force kill! 
 		// damageType = DF_GIB will cause player's death blur become red?
-        player.TakeDamage( 10000, player, player, { scriptType = DF_GIB } ) 
+        player.TakeDamage( 10000, player, player, { scriptType = DF_GIB, damageSourceId = eDamageSourceId.farewell_cruel_world } ) 
 		print( "[NESSIE] Admin " + player.GetPlayerName() + " self gibbed!" )
 	}
-	return true
-}
-
-bool function CC_SpawnDoomedTitan( entity player, array<string> args )
-{
-	if( !BATTERY_SPAWNERS.contains( player.GetUID() ) )
-		return false
-	vector pos = GetPlayerCrosshairOrigin( player )
-	vector angs = player.EyeAngles()
-	entity titan = CreateOgre( TEAM_BOTH, pos, angs )
-	DispatchSpawn( titan )
-
-	titan.TakeDamage( titan.GetMaxHealth() + 1, null, null, 0 ) 
-	//DoomTitan( titan )
-	print( "[NESSIE] " + player.GetPlayerName() + " spawned a doomed titan!" )
-	return true
-}
-
-bool function CC_SpawnDoomedPilotTitan( entity player, array<string> args )
-{
-	if( !BATTERY_SPAWNERS.contains( player.GetUID() ) )
-		return false
-
-	vector pos = GetPlayerCrosshairOrigin( player )
-	vector angs = player.EyeAngles()
-	entity titan = CreateOgre( TEAM_BOTH, pos, angs )
-	SetSpawnOption_AISettings( titan, "npc_titan_ogre_minigun" )
-	DispatchSpawn( titan )
-
-	titan.TakeDamage( titan.GetMaxHealth() + 1, null, null, 0 ) 
-	//DoomTitan( titan )
-	print( "[NESSIE] " + player.GetPlayerName() + " spawned a doomed npc pilot titan!" )
-
-	entity titanSoul = titan.GetTitanSoul()
-	if ( !IsValid( titanSoul ) )
-		return true
-
-	// mark as having a pilot valid
-	titanSoul.soul.seatedNpcPilot.isValid				= true
-	titanSoul.soul.seatedNpcPilot.team 					= TEAM_BOTH
-
-	titanSoul.soul.seatedNpcPilot.modelAsset 			= $"models/humans/pilots/pilot_medium_geist_m.mdl"
-	titanSoul.soul.seatedNpcPilot.title 				= "PILOT"
-
-	titanSoul.soul.seatedNpcPilot.isInvulnerable		= false
-
-	titanSoul.soul.seatedNpcPilot.health				= 250
-
 	return true
 }
 

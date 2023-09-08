@@ -5,7 +5,7 @@ global function MpWeaponGrenadeEMP_Init
 void function MpWeaponGrenadeEMP_Init()
 {
 	#if SERVER
-	AddDamageCallbackSourceID( eDamageSourceId.mp_weapon_grenade_emp, OnDamagedTarget_GrenadeEMP )
+		AddDamageCallbackSourceID( eDamageSourceId.mp_weapon_grenade_emp, OnDamagedTarget_GrenadeEMP )
 	#endif
 }
 
@@ -32,6 +32,21 @@ void function OnDamagedTarget_GrenadeEMP( entity ent, var damageInfo )
 	{
 		if ( ent.IsPlayer() )
 			ImpulseGrenade_EffectsPlayer( ent, damageInfo )
+		return
+	}
+
+	// adding "bleedout_balance": nerfed emp effect
+	const asset FX_EMP_BODY_HUMAN			= $"P_emp_body_human"
+	const asset FX_EMP_BODY_TITAN			= $"P_emp_body_titan"
+	const float EMP_SEVERITY_SLOWTURN_NERFED = 0.20 // same as energy siphon
+	const float EMP_SEVERITY_SLOWMOVE_NERFED = 0.01 // prevents victim from sprinting
+	const float EMP_MIN_DURATION_NERFED = 0.25
+	const float EMP_MAX_DURATION_NERFED = 1.25
+	const float EMP_FADEOUT_DURATION_NERFED = 0.25
+
+	if ( mods.contains( "bleedout_balance" ) )
+	{
+		Electricity_DamagedPlayerOrNPC( ent, damageInfo, FX_EMP_BODY_HUMAN, FX_EMP_BODY_TITAN, EMP_SEVERITY_SLOWTURN_NERFED, EMP_SEVERITY_SLOWMOVE_NERFED, EMP_MIN_DURATION_NERFED, EMP_MAX_DURATION_NERFED, EMP_FADEOUT_DURATION_NERFED )
 		return
 	}
 

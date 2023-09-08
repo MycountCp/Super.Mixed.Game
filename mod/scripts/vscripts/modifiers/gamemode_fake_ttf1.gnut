@@ -1,6 +1,7 @@
 global function Modded_Gamemode_Fake_Titanfall1_Init
 
-const int TITAN_SHIELD_PER_SEGMENT = 1000
+const int TITAN_SHIELD_BASE = 1000 // every chassis will have 1000 shield by default
+const int TITAN_SHIELD_PER_SEGMENT = 500 // shield value scale with health segments
 const int TITAN_HEALTH_PER_SEGMENT = 1500
 const float TITAN_DOOMED_HEALTH_FRAC = 1.0 // fake ttf1 behavior: doomed health is almost same as undoomed health
 // needs to rework most of the titancore ability before we can use this...
@@ -40,6 +41,9 @@ void function Modded_Gamemode_Fake_Titanfall1_Init()
     // notifications
     AddCallback_OnClientConnected( OnClientConnected )
 
+    // score
+    AddCallback_GameStateEnter( eGameState.Prematch, SetUpFakeTTF1ScoreEvent )
+
     // rodeo modifier settings!
     Rodeo_SetBatteryRemovalDamageFlags( damageTypes.rodeoBatteryRemoval | DF_BYPASS_SHIELD ) // rodeo will deal bvpass_shield damage to titans
     Rodeo_SetBatteryRemovalDamageScale( 0.8 ) // take less damage from battery removal( current: 1500 -> 1200 )
@@ -55,10 +59,17 @@ void function Modded_Gamemode_Fake_Titanfall1_Init()
     // death package
     DeathPackage_TitanAlwaysGibOnDeath( false ) // titan won't alwasy be gibbed on death
 
+    // damage effect
+    TitanHealth_EnableHealthChickletFX( true ) // modified function in _titan_triple_health.gnut, enable segment lose effect
+    Titan_EnableStaggerOnRepeatDamage( true ) // modified in sh_titan.gnut, enable stagger on repeat damage
+
     AddCallback_OnTitanGetsNewTitanLoadout( OnTitanGetsLoadout ) // titan settings
     AddCallback_OnTitanDoomed( OnTitanDoomed ) // doomed settings
+
     // hard to control.. respawn almost didn't add any support for ttf1-like core meter
-    RegisterSignal( "PendingEarnModeChange" )
+    #if DISABLE_TITAN_CORE_ON_DOOM
+        RegisterSignal( "PendingEarnModeChange" )
+    #endif
     AddCallback_OnTitanUndoomed( OnTitanUndoomed ) // modified callback in _titan_health.gnut. undoomed settings
     AddCallback_OnPilotBecomesTitan( OnPlayerBecomesTitan )
 }
@@ -67,6 +78,43 @@ void function OnClientConnected( entity player )
 {
 	foreach ( string message in CONNECTING_NOTIFICATIONS )
 		Chat_ServerPrivateMessage( player, message, false, false )
+}
+
+void function SetUpFakeTTF1ScoreEvent()
+{
+    // score event setup:
+    // remove all earn values, use bit higher own value
+    
+    // pilot kill
+	ScoreEvent_SetEarnMeterValues( "KillPilot", 0.0, 0.12, 0.5 )
+	ScoreEvent_SetEarnMeterValues( "EliminatePilot", 0.0, 0.12, 0.5 )
+	ScoreEvent_SetEarnMeterValues( "PilotAssist", 0.0, 0.05, 0.0 )
+	// titan kill
+	ScoreEvent_SetEarnMeterValues( "DoomTitan", 0.0, 0.0 )
+	ScoreEvent_SetEarnMeterValues( "KillTitan", 0.0, 0.20 )
+	ScoreEvent_SetEarnMeterValues( "KillAutoTitan", 0.0, 0.20 )
+	ScoreEvent_SetEarnMeterValues( "EliminateTitan", 0.0, 0.20 )
+	ScoreEvent_SetEarnMeterValues( "EliminateAutoTitan", 0.0, 0.20 )
+	ScoreEvent_SetEarnMeterValues( "TitanKillTitan", 0.0, 0.15 )
+	ScoreEvent_SetEarnMeterValues( "TitanAssist", 0.0, 0.15 )
+	// rodeo
+	ScoreEvent_SetEarnMeterValues( "PilotBatteryStolen", 0.0, 0.20, 0.0 )
+	ScoreEvent_SetEarnMeterValues( "PilotBatteryApplied", 0.0, 0.20, 0.0 )
+	// special method of killing
+	ScoreEvent_SetEarnMeterValues( "Headshot", 0.0, 0.0, 0.0 )
+	ScoreEvent_SetEarnMeterValues( "FirstStrike", 0.0, 0.03, 0.0 )
+	
+	// ai
+	ScoreEvent_SetEarnMeterValues( "KillGrunt", 0.0, 0.03, 0.34 )
+	ScoreEvent_SetEarnMeterValues( "KillSpectre", 0.0, 0.03, 0.34 )
+	ScoreEvent_SetEarnMeterValues( "LeechSpectre", 0.0, 0.03 )
+	ScoreEvent_SetEarnMeterValues( "KillHackedSpectre", 0.0, 0.03, 0.34 )
+	ScoreEvent_SetEarnMeterValues( "KillStalker", 0.0, 0.03, 0.5 )
+	ScoreEvent_SetEarnMeterValues( "KillSuperSpectre", 0.0, 0.15, 0.34 )
+	// ai(extended)
+	ScoreEvent_SetEarnMeterValues( "KillLightTurret", 0.0, 0.08 )
+	ScoreEvent_SetEarnMeterValues( "KillProwler", 0.0, 0.03, 0.34 )
+	ScoreEvent_SetEarnMeterValues( "KillDrone", 0.00, 0.02, 0.5 )
 }
 
 void function OnTitanGetsLoadout( entity titan, TitanLoadoutDef titanLoadout )
@@ -88,7 +136,7 @@ void function SetupTTF1StyleTitan( entity titan, TitanLoadoutDef titanLoadout )
     TitanHealth_SetSoulEnableShieldRegen( soul, true )
 	TitanHealth_SetSoulShieldRegenDelay( soul, TITAN_SHIELD_REGEN_DELAY )
 	TitanHealth_SetSoulShieldRegenTime( soul, TITAN_SHIELD_REGEN_TIME )
-	TitanHealth_SetSoulShieldDamageReductionScale( soul, 0.75 )
+	TitanHealth_SetSoulShieldDamageReductionScale( soul, 0.7 )
     // doomed state
     TitanHealth_SetSoulInfiniteDoomedState( soul, false )
     TitanHealth_SetSoulDoomedHealthLossDamage( soul, 0.8 )
@@ -100,6 +148,7 @@ void function SetupTTF1StyleTitan( entity titan, TitanLoadoutDef titanLoadout )
     thread TitanHealthWatcher( titan ) // prevent changing health midway
 
     // class mods
+    // add turbo titan, replace turbo engine with hyper core
     if ( titanLoadout.setFileMods.contains( "pas_mobility_dash_capacity" ) ) // has turbo engine
     {
         // change to PAS_HYPER_CORE
@@ -110,6 +159,7 @@ void function SetupTTF1StyleTitan( entity titan, TitanLoadoutDef titanLoadout )
             GiveOffhandElectricSmoke( titan )
         }
     }
+    // these mods gets applied on player embark!
     titanLoadout.setFileMods.removebyvalue( "pas_mobility_dash_capacity" )
     titanLoadout.setFileMods.append( "turbo_titan" )
 }
@@ -123,17 +173,17 @@ void function TitanHealthWatcher( entity titan )
 
     // initial setup
     int segments = titan.GetMaxHealth() / 2500 // hardcoded
-    soul.SetShieldHealthMax( segments * TITAN_SHIELD_PER_SEGMENT ) // 1000(was 1250) shield per segment
+    soul.SetShieldHealthMax( TITAN_SHIELD_BASE + segments * TITAN_SHIELD_PER_SEGMENT ) // 1000(was 1250) shield per segment
     soul.SetShieldHealth( soul.GetShieldHealthMax() )
     titan.SetMaxHealth( segments * TITAN_HEALTH_PER_SEGMENT ) // 1500 health per segment
     titan.SetHealth( titan.GetMaxHealth() )
 
     int startingMaxHealth = titan.GetMaxHealth()
     // modified function in sh_titan_triple_health.gnut
-    TitanHealth_SetSegmentHealthOverride( soul, TITAN_HEALTH_PER_SEGMENT )
+    TitanHealth_SetSoulSegmentHealthOverride( soul, TITAN_HEALTH_PER_SEGMENT )
     // fake ttf1 behavior: doomed health is almost same as undoomed health
     // modified function in sh_titan_soul.gnut
-    TitanSoul_SetDoomedHealthOverride( soul, int( titan.GetMaxHealth() * TITAN_DOOMED_HEALTH_FRAC ) )
+    TitanSoul_SetSoulDoomedHealthOverride( soul, int( titan.GetMaxHealth() * TITAN_DOOMED_HEALTH_FRAC ) )
     // start watching
     while ( true )
     {
@@ -154,9 +204,9 @@ void function TitanHealthWatcher( entity titan )
             // update starting max health
             startingMaxHealth = titan.GetMaxHealth()
             // update segment health
-            TitanHealth_SetSegmentHealthOverride( soul, TITAN_HEALTH_PER_SEGMENT )
+            TitanHealth_SetSoulSegmentHealthOverride( soul, TITAN_HEALTH_PER_SEGMENT )
             // update doomed health
-            TitanSoul_SetDoomedHealthOverride( soul, int( titan.GetMaxHealth() * TITAN_DOOMED_HEALTH_FRAC ) )
+            TitanSoul_SetSoulDoomedHealthOverride( soul, int( titan.GetMaxHealth() * TITAN_DOOMED_HEALTH_FRAC ) )
         }
     }
 }

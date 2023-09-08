@@ -72,10 +72,10 @@
             }
 		},
 		{
-			"Path": "/nessieutil/npc_freeze.gnut",
+			"Path": "/nessieutil/enum_utility.gnut",
 			"RunOn": "SERVER",
 			"ServerCallback": {
-                "After": "Nessie_NPC_Freeze_Init"
+                "After": "Nessie_Enum_Utility_Init"
             }
 		},
 		// nessie utility end
@@ -279,8 +279,11 @@
             }
 		},
 		{
-			"Path": "/titanutil/_fakebt.gnut",
-			"RunOn": "SERVER && MP",
+			"Path": "/titanutil/sh_fakebt.gnut",
+			"RunOn": "( CLIENT || SERVER ) && MP",
+			"ClientCallback": {
+                "After": "BTReplace_Init"
+            },
 			"ServerCallback": {
                 "After": "BTReplace_Init"
             }
@@ -456,6 +459,18 @@
             }
 		},
 		// vanilla missing weapon scripts end
+		// northstar missing weapon scripts
+		{
+			"Path": "/modweapons/northstar_miss/mp_weapon_shotgun_doublebarrel_tfo_fixed.gnut",
+			"RunOn": "CLIENT || SERVER",
+			"ClientCallback": {
+                "After": "MpWeaponShotgunDoubleBarrelTFO_Init"
+            },
+            "ServerCallback": {
+                "After": "MpWeaponShotgunDoubleBarrelTFO_Init"
+            }
+		},
+		// northstar missing weapon scripts end
 		// shared utilities
 		{
 			"Path": "/sharedutil/sh_friendlyfire.gnut",
@@ -1040,16 +1055,6 @@
             }
 		},
 		{
-			"Path": "/modweapons/mp_weapon_slience_frag.gnut",
-			"RunOn": "CLIENT || SERVER",
-			"ClientCallback": {
-				"After": "MpWeaponSilenceFrag_Init"
-			},
-			"ServerCallback": {
-				"After": "MpWeaponSilenceFrag_Init"
-			}
-		},
-		{
 			"Path": "/modweapons/modded_stim/mp_ability_octane_stim.gnut",
 			"RunOn": "CLIENT || SERVER",
 			"ClientCallback":{
@@ -1125,6 +1130,13 @@
 			"RunOn": "SERVER",
             "ServerCallback": {
                 "After": "Modified_Melee_AnimTime_Init"
+            }	
+		},
+		{
+			"Path": "/modmelee/_modded_melee_synced_human.gnut",
+			"RunOn": "SERVER",
+            "ServerCallback": {
+                "After": "Modded_Melee_Synced_Human_Init"
             }	
 		},
 		// mod melee end
@@ -1504,6 +1516,30 @@
 			"ClientCallback": {
                 "After": "MpAbilityCloakDrone_Init"
             }
+		},
+		{
+			"Path": "/modweapons/mp_weapon_flesh_mgl.gnut",
+			"RunOn": "CLIENT || SERVER",
+            "ServerCallback": {
+                "After": "MpWeaponFleshMGL_Init"
+            },
+			"ClientCallback": {
+                "After": "MpWeaponFleshMGL_Init"
+            }
+		},
+		{
+			"Path": "/modweapons/mp_weapon_tripwire_launcher.gnut",
+			"RunOn": "CLIENT || SERVER",
+            "ServerCallback": {
+                "After": "MpWeaponTripwireLauncher_Init"
+            },
+			"ClientCallback": {
+                "After": "MpWeaponTripwireLauncher_Init"
+            }
 		}
+	],
+
+	"Localisation": [
+		"resource/mixed_game_localization_%language%.txt"
 	]
 }

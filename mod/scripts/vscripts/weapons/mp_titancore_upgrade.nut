@@ -1,5 +1,9 @@
 global function UpgradeCore_Init
 global function OnWeaponPrimaryAttack_UpgradeCore
+// modified callbacks
+global function OnCoreCharge_UpgradeCore
+global function OnCoreChargeEnd_UpgradeCore
+//
 #if SERVER
 global function OnWeaponNpcPrimaryAttack_UpgradeCore
 #endif
@@ -367,15 +371,19 @@ void function UpgradeCoreThink( entity weapon, float coreDuration )
 	EmitSoundOnEntityOnlyToPlayer( owner, owner, "Titan_Monarch_Smart_Core_Activated_1P" )
 	EmitSoundOnEntityOnlyToPlayer( owner, owner, "Titan_Monarch_Smart_Core_ActiveLoop_1P" )
 	EmitSoundOnEntityExceptToPlayer( owner, owner, "Titan_Monarch_Smart_Core_Activated_3P" )
-	entity soul = owner.GetTitanSoul()
-	if ( SoulHasPassive( soul, ePassives.PAS_VANGUARD_DOOM ) )
-	{
-		int newShieldHealth = minint( PAS_UPGRADE_SHIELDHEAL_MAX, soul.GetShieldHealthMax() )
-		soul.SetShieldHealth( newShieldHealth )
-	}
-	else
-    	soul.SetShieldHealth( soul.GetShieldHealthMax() )
+	//entity soul = owner.GetTitanSoul()
+	//if ( SoulHasPassive( soul, ePassives.PAS_VANGUARD_DOOM ) )
+	//{
+		//int newShieldHealth = minint( PAS_UPGRADE_SHIELDHEAL_MAX, soul.GetShieldHealthMax() )
+		//soul.SetShieldHealth( newShieldHealth )
+	//}
+	//else
+    	//soul.SetShieldHealth( soul.GetShieldHealthMax() )
     // minint: 获取其参数内的最小值。这里意思为：若恢复后的盾值大于最大盾值，则选用最大盾值，以防止崩溃
+	//soul.SetShieldHealth( soul.GetShieldHealthMax() )
+	// upgrade core should only regen 2500 points of shield even when shield value is modified
+    // hardcoded!
+    soul.SetShieldHealth( min( soul.GetShieldHealthMax(), soul.GetShieldHealth() + 2500 ) )
 
 	OnThreadEnd(
 	function() : ( weapon, owner, soul )
@@ -403,6 +411,23 @@ void function UpgradeCoreThink( entity weapon, float coreDuration )
 }
 #endif
 
+// modified callbacks
+bool function OnCoreCharge_UpgradeCore( entity weapon )
+{
+	// modded weapon
+	if( weapon.HasMod( "shield_core" ) )
+		return OnCoreCharge_Shield_Core( weapon )
+
+	return true
+}
+
+void function OnCoreChargeEnd_UpgradeCore( entity weapon )
+{
+	// modded weapon
+	if( weapon.HasMod( "shield_core" ) )
+		return OnCoreChargeEnd_Shield_Core( weapon )
+}
+//
 
 #if CLIENT
 void function ServerCallback_VanguardUpgradeMessage( int upgradeID )

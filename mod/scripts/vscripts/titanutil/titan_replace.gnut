@@ -6,7 +6,8 @@ global function TitanReplace_Init
 
 // settings
 global function TitanReplace_SetEnabled
-global function TitanReplace_EnableNorthstarReBalance
+global function TitanReplace_EnableNorthstarReBalance // rebalance northstar's railgun
+global function TitanReplace_EnableRoninCoreFix // fix ronin's sword core behavior
 
 ///// acrossFile utilities
 global function TitanReplace_GiveTitanLoadoutReplace
@@ -58,6 +59,7 @@ struct
 	// settings
 	bool defaultReplaceEnabled = false
 	bool northstarReBalanceEnabled
+	bool roninCoreFixEnabled
 
 	// player table
 	table<entity, string> soulTitleTable
@@ -86,6 +88,11 @@ void function TitanReplace_SetEnabled( bool enabled )
 void function TitanReplace_EnableNorthstarReBalance( bool enable )
 {
 	file.northstarReBalanceEnabled = enable
+}
+
+void function TitanReplace_EnableRoninCoreFix( bool enable )
+{
+	file.roninCoreFixEnabled = enable
 }
 
 void function OnTitanSpawned( entity titan )
@@ -128,12 +135,23 @@ void function TitanReplace_GiveTitanLoadoutReplace( entity titan )
 	{
 		// northstar balance...
 		case $"models/titans/light/titan_light_raptor.mdl":
-			if ( file.northstarReBalanceEnabled && titan.GetMainWeapons().len() > 0 )
+			if ( file.northstarReBalanceEnabled )
 			{
-				entity mainWeapon = titan.GetMainWeapons()[0]
-				mainWeapon.AddMod( "rebalanced_weapon" )
+				if ( titan.GetMainWeapons().len() > 0 )
+				{
+					entity mainWeapon = titan.GetMainWeapons()[0]
+					mainWeapon.AddMod( "rebalanced_weapon" )
+				}
 			}
 			break
+
+		case $"models/titans/light/titan_light_locust.mdl":
+			if ( file.roninCoreFixEnabled )
+			{
+				entity coreWeapon = titan.GetOffhandWeapon( OFFHAND_EQUIPMENT )
+				if ( IsValid( coreWeapon ) )
+					coreWeapon.AddMod( "sword_core_fix" )
+			}
 	
 		case $"models/titans/medium/titan_medium_vanguard.mdl":
 			//TitanPick_SoulSetEnableWeaponPick( titanSoul, false ) // set players unable to replace weapons from ground
@@ -552,7 +570,8 @@ void function TitanReplace_BecomeAtlas( entity titan, bool isPickup = false, boo
 					if ( offhand.GetWeaponClassName() != CORE_SMOKE_WEAPON )
 						titan.TakeWeaponNow( offhand.GetWeaponClassName() )
 				}
-				thread TakeTitanEarnMeterSmoke( titan ) // smoke disabled on spawn
+				// smoke disabled on spawn. this also replaces PAS_ANTI_RODEO with PAS_HYPER_CORE
+				thread TakeTitanEarnMeterSmoke( titan ) 
 
 				//Weapon
                 entity newWeapon = titan.GiveWeapon( "mp_titanweapon_sticky_40mm", ["atlas_40mm"] )
@@ -909,7 +928,8 @@ void function TitanReplace_BecomeStryder( entity titan, bool isPickup = false, b
 					if ( offhand.GetWeaponClassName() != CORE_SMOKE_WEAPON )
 						titan.TakeWeaponNow( offhand.GetWeaponClassName() )
 				}
-				thread TakeTitanEarnMeterSmoke( titan ) // smoke disabled on spawn
+				// smoke disabled on spawn. this also replaces PAS_ANTI_RODEO with PAS_HYPER_CORE
+				thread TakeTitanEarnMeterSmoke( titan )
 
 				//Weapon
                 //titan.GiveWeapon( "mp_titanweapon_rocketeer_rocketstream" )
@@ -1255,7 +1275,8 @@ void function TitanReplace_BecomeOgre( entity titan, bool isPickup = false, bool
 					if ( offhand.GetWeaponClassName() != CORE_SMOKE_WEAPON )
 						titan.TakeWeaponNow( offhand.GetWeaponClassName() )
 				}
-				thread TakeTitanEarnMeterSmoke( titan ) // smoke disabled on spawn
+				// smoke disabled on spawn. this also replaces PAS_ANTI_RODEO with PAS_HYPER_CORE
+				thread TakeTitanEarnMeterSmoke( titan )
 
 				//Weapon
                 titan.GiveWeapon ("mp_titanweapon_triplethreat", ["ogre_triplethreat"])
@@ -1361,18 +1382,23 @@ void function TitanReplace_BecomeBison( entity titan, bool isPickup = false, boo
 				titan.GiveOffhandWeapon("mp_titanweapon_dumbfire_rockets", OFFHAND_ORDNANCE, ["pas_northstar_cluster", "fd_twin_cluster"] )
 				//titan.GiveOffhandWeapon("mp_titanweapon_flame_wall", OFFHAND_ORDNANCE, ["wrecking_ball"] )
 
-				//Titan Core, bison variant
+				//Titan Core
 				titan.GiveOffhandWeapon( "mp_titancore_flame_wave", OFFHAND_EQUIPMENT, ["ground_slam"] )
+				
+				//Titan Core, bison variant
 				//titan.GiveOffhandWeapon( "mp_titancore_shift_core", OFFHAND_EQUIPMENT, ["berserker_core", "deploy_animation_fix"] )
 
-				//Melee, bison variant
-				//titan.GiveOffhandWeapon( "melee_titan_punch_scorch", OFFHAND_MELEE )
+				//Melee
 				titan.GiveOffhandWeapon( "melee_titan_punch_fighter", OFFHAND_MELEE, ["berserker", "allow_as_primary", "dash_punch", "bison_punch"] )
 				titan.SetActiveWeaponByName( "melee_titan_punch_fighter" )
+
 				// version2: try to use mp_weapon_gunship_missile as a melee primary placeholder
 				//titan.GiveWeapon( "mp_weapon_gunship_missile", ["titan_electric_fist_primary"] )
 				//titan.GiveOffhandWeapon( "melee_titan_punch_fighter", OFFHAND_MELEE, ["berserker", "dash_punch", "bison_punch"] )
 				//titan.SetActiveWeaponByName( "mp_weapon_gunship_missile" )
+
+				//Melee, bison variant
+				//titan.GiveOffhandWeapon( "melee_titan_punch_scorch", OFFHAND_MELEE )
 			}
 		}
 	}
@@ -2832,6 +2858,20 @@ string function ModdedArchonWeaponDisplayNameFunc( entity weapon )
 void function TakeTitanEarnMeterSmoke( entity titan )
 {
 	titan.EndSignal( "OnDestroy" )
+
+	entity soul = titan.GetTitanSoul()
+	if ( !IsValid( soul ) )
+		return
+	
+	// change PAS_ANTI_RODEO to PAS_HYPER_CORE
+	if ( SoulHasPassive( soul, ePassives.PAS_ANTI_RODEO ) )
+	{
+		TakePassive( soul, ePassives.PAS_ANTI_RODEO )
+		GivePassive( soul, ePassives.PAS_HYPER_CORE )
+		if ( TitanDamageRewardsTitanCoreTime() )
+			SoulTitanCore_SetNextAvailableTime( soul, 0.20 )
+	}
+
 	WaitEndFrame() // wait for titan get smoke weapon
 
 	titan.TakeOffhandWeapon( OFFHAND_INVENTORY )

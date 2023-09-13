@@ -52,22 +52,27 @@ void function CaptureTheFlag_Init()
 	// setup stuff for the functions in sh_gamemode_ctf
 	// don't really like using level for stuff but just how it be
 	level.teamFlags <- {}
-	
-	// setup score event earnmeter values
-	ScoreEvent_SetEarnMeterValues( "KillPilot", 0.05, 0.20 )
-	ScoreEvent_SetEarnMeterValues( "Headshot", 0.0, 0.02 )
-	ScoreEvent_SetEarnMeterValues( "FirstStrike", 0.0, 0.05 )
-	ScoreEvent_SetEarnMeterValues( "KillTitan", 0.0, 0.25 )
-	ScoreEvent_SetEarnMeterValues( "PilotBatteryStolen", 0.0, 0.35 )
-	
-	ScoreEvent_SetEarnMeterValues( "FlagCarrierKill", 0.0, 0.20 )
-	ScoreEvent_SetEarnMeterValues( "FlagTaken", 0.0, 0.10 )
-	ScoreEvent_SetEarnMeterValues( "FlagCapture", 0.0, 0.30 )
-	ScoreEvent_SetEarnMeterValues( "FlagCaptureAssist", 0.0, 0.20 )
-	ScoreEvent_SetEarnMeterValues( "FlagReturn", 0.0, 0.20 )
 
-	// nscn specifics
-	SetShouldPlayDefaultMusic( true )
+	// setup score event earnmeter values
+	CTFScoreEventSetUp()
+
+	// tempfix specifics
+	SetShouldPlayDefaultMusic( true ) // play music when score or time reaches some point
+	EarnMeterMP_SetPassiveGainProgessEnable( true ) // enable earnmeter gain progressing like vanilla
+}
+
+void function CTFScoreEventSetUp()
+{
+	// override settings
+	ScoreEvent_SetEarnMeterValues( "KillPilot", 0.12, 0.10 )
+	ScoreEvent_SetEarnMeterValues( "EliminatePilot", 0.12, 0.10 )
+	
+	// ctf specific
+	ScoreEvent_SetEarnMeterValues( "FlagCarrierKill", 0.1, 0.1, 0.5 )
+	ScoreEvent_SetEarnMeterValues( "FlagTaken", 0.1, 0.0 )
+	ScoreEvent_SetEarnMeterValues( "FlagCapture", 0.15, 0.15 )
+	ScoreEvent_SetEarnMeterValues( "FlagCaptureAssist", 0.1, 0.1, 0.5 )
+	ScoreEvent_SetEarnMeterValues( "FlagReturn", 0.1, 0.1 )
 }
 
 void function RateSpawnpoints_CTF( int checkClass, array<entity> spawnpoints, int team, entity player ) 
@@ -421,7 +426,9 @@ void function CaptureFlag( entity player, entity flag )
 	AddTeamScore( team, 1 )
 	AddPlayerScore( player, "FlagCapture", player )
 	player.AddToPlayerGameStat( PGS_ASSAULT_SCORE, 1 ) // add 1 to captures on scoreboard
-	SetRoundWinningKillReplayAttacker( player ) // set attacker for last cap replay
+	// better function by modified _gamestate_mp.nut
+	//SetRoundWinningKillReplayAttacker( player ) // set attacker for last cap replay
+	SetRoundWinningHighlightReplayPlayer( player ) // better method!!!
 	
 	array<entity> assistList
 	if ( player.GetTeam() == TEAM_IMC )

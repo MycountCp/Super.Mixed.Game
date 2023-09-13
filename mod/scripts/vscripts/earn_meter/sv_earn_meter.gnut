@@ -2,6 +2,7 @@ untyped // so we can use entity.s.
 global function Sv_EarnMeter_Init
 global function PlayerEarnMeter_SoftReset
 global function PlayerEarnMeter_SetOwnedFrac
+global function PlayerEarnMeter_SetEarnedFrac // northstar missing
 global function PlayerEarnMeter_Reset
 global function PlayerEarnMeter_Empty
 global function PlayerEarnMeter_AddEarnedFrac
@@ -75,8 +76,6 @@ void function Sv_EarnMeter_Init()
 {
 	if ( !EARNMETER_ENABLED )
 		return
-
-	RegisterSignal( "EarnMeterDecayThink" )
 
 	SetCallback_EarnMeterGoalEarned( DummyGoalEarnedCallback )
 	SetCallback_EarnMeterRewardEarned( DummyRewardEarnedCallback )
@@ -232,9 +231,6 @@ void function PlayerEarnMeter_AddEarnedAndOwned( entity player, float addOverdri
 	float newOverdriveValue = max( min( newOwnedValue + startingOverdriveDiff + multipliedOverdriveValue, 1.0 ), 0.0 )
 	PlayerEarnMeter_SetEarnedFrac( player, newOverdriveValue )
 
-	if ( newOverdriveValue > startingOverdriveValue )
-		thread EarnMeterDecayThink( player )
-
 	foreach( thresholdStruct in file.thresholdEarnedCallbacks  )
 	{
 		if ( newOverdriveValue <  thresholdStruct.threshold ) //We're not past the threshold yet, don't run the function
@@ -264,35 +260,45 @@ void function PlayerEarnMeter_AddEarnedAndOwned( entity player, float addOverdri
 	}
 
 	// If we earned our goal
-	if ( (startingOverdriveValue < 1.0 && newOverdriveValue >= 1.0) || (startingOwnedValue < 1.0 && newOwnedValue >= 1.0) )
+	if ( PlayerEarnMeter_IsGoalEnabled( player ) )
 	{
-		if ( newOwnedValue < 1.0 ) // if the owned portion isn't already maxed out, do so
-			PlayerEarnMeter_SetOwnedFrac( player, 1.0 )
+		// when client display a 99% frac, server actually has "0.989999"
+		// this fixes earnmeter displays as 99% but player can't earn goal
+		float goalFrac = 0.998
+		// debug
+		//print( "goalFrac: " + string( goalFrac ) )
+		//print( "startingOverdriveValue: " + string( startingOverdriveValue ) )
+		//print( "newOverdriveValue: " + string( newOverdriveValue ) )
+		//print( "startingOwnedValue: " + string( startingOwnedValue ) )
+		//print( "newOwnedValue: " + string( newOwnedValue ) )
+		if ( (startingOverdriveValue < goalFrac && newOverdriveValue >= goalFrac) || (startingOwnedValue < goalFrac && newOwnedValue >= goalFrac) )
+		{
+			if ( newOwnedValue < goalFrac ) // if the owned portion isn't already maxed out, do so
+				PlayerEarnMeter_SetOwnedFrac( player, 1.0 )
 
-		PlayerEarnMeter_TryMakeGoalAvailable( player )
-	}
-	
-	// If titan avaliable and we're nearly reach it
-	else if( EarnMeterMP_IsTitanEarnGametype() && (startingOverdriveValue < 0.8 && newOverdriveValue >= 0.8) )
-	{
-		#if MP
-			PlayFactionDialogueToPlayer( "mp_titanSoon", player )
-		#endif
+			PlayerEarnMeter_TryMakeGoalAvailable( player )
+		}
+		// If titan is goal and we're nearly reach it
+		else if( EarnMeterMP_IsTitanEarnGametype() && (startingOverdriveValue < 0.8 && newOverdriveValue >= 0.8) )
+		{
+			#if MP
+				PlayFactionDialogueToPlayer( "mp_titanSoon", player )
+			#endif
+		}
 	}
 	//#if MP
 	//	Remote_CallFunction_NonReplay( player, "ServerCallback_EarnMeterAwarded", addOverdriveValue, addOwnedValue )
 	//#endif
 }
 
-
 void function PlayerEarnMeter_RefreshGoal( entity player )
 {
+	// works pretty bad since it runs in sv_earn_meter_mp.gnut and looping to refresh
 	if ( player.GetPlayerNetInt( "goalState" ) == eRewardState.AVAILABLE )
 	{
 		file.goalEarnedCallback( player )
 	}
 }
-
 
 void function PlayerEarnMeter_SetEarnedFrac( entity player, float value )
 {
@@ -324,8 +330,6 @@ void function PlayerEarnMeter_SoftReset( entity player )
 
 void function PlayerEarnMeter_Reset( entity player )
 {
-	player.Signal( "EarnMeterDecayThink" )
-
 	PlayerEarnMeter_SetEarnedFrac( player, 0.0 )
 	PlayerEarnMeter_SetOwnedFrac( player, 0.0 )
 	PlayerEarnMeter_SetRewardFrac( player, 0.0 )
@@ -336,51 +340,9 @@ void function PlayerEarnMeter_Reset( entity player )
 
 void function PlayerEarnMeter_Empty( entity player )
 {
-	player.Signal( "EarnMeterDecayThink" )
-
 	PlayerEarnMeter_SetEarnedFrac( player, 0.0 )
 	PlayerEarnMeter_SetOwnedFrac( player, 0.0 )
 	PlayerEarnMeter_SetRewardFrac( player, 0.0 )
-}
-
-void function EarnMeterDecayThink( entity player )
-{
-	player.EndSignal( "OnDeath" )
-	player.Signal( "EarnMeterDecayThink" )
-	player.EndSignal( "EarnMeterDecayThink" )
-	thread OverDriveClearOnDeath( player )
-
-	if ( EarnMeter_DecayHold() < 0 )
-		return
-
-	wait EarnMeter_DecayHold()
-
-	float earnedValue = PlayerEarnMeter_GetEarnedFrac( player )
-	float ownedValue = PlayerEarnMeter_GetOwnedFrac( player )
-
-	// 10% over 20 seconds
-	float decayRate = 1.0 / 135.0
-
-	//float startTime = Time()
-	while ( earnedValue > ownedValue )
-	{
-		//float frameTime = Time() - startTime
-		//startTime = Time()
-
-		PlayerEarnMeter_AddEarnedFrac( player, -(decayRate * 0.25) )
-
-		wait 0.25
-
-		earnedValue = PlayerEarnMeter_GetEarnedFrac( player )
-		ownedValue = PlayerEarnMeter_GetOwnedFrac( player )
-	}
-}
-
-void function OverDriveClearOnDeath( entity player )
-{
-	player.EndSignal( "OnDestroy" )
-	player.WaitSignal( "OnDeath" )
-	PlayerEarnMeter_SetEarnedFrac( player, PlayerEarnMeter_GetOwnedFrac( player ) )
 }
 
 bool function PlayerEarnMeter_TryMakeGoalAvailable( entity player )
@@ -437,9 +399,11 @@ void function PlayerEarnMeter_SetGoalUsed( entity player )
 	player.SetPlayerNetInt( "goalState", eRewardState.USED )
 }
 
-
 bool function PlayerEarnMeter_TryMakeRewardAvailable( entity player )
 {
+	// debug
+	//print( "RUNNING PlayerEarnMeter_TryMakeRewardAvailable()" )
+
 	if ( player.GetPlayerNetInt( "rewardState" ) == eRewardState.USED )
 		return false
 
@@ -503,6 +467,8 @@ void function JFS_PlayerEarnMeter_CoreRewardUpdate( entity titan, float starting
 
 void function GiveOffhandElectricSmoke( entity titan )
 {
+	// debug
+	//print( "RUNNING GiveOffhandElectricSmoke() on titan: " + string( titan ) )
 	entity soul = titan.GetTitanSoul()
 	// modified here: add controllable titan offhand smoke usage
 	if ( !PlayerEarnMeter_GetSoulEarnMeterSmokeEnabled( soul ) )
@@ -512,6 +478,8 @@ void function GiveOffhandElectricSmoke( entity titan )
 	bool hasAntiRodeoKit = IsValid( soul ) && SoulHasPassive( soul, ePassives.PAS_ANTI_RODEO )
 	if ( titan.GetOffhandWeapon( OFFHAND_INVENTORY ) != null )
 	{
+		// debug
+		//print( "titan start with reward smoke" )
 		entity weapon = titan.GetOffhandWeapon( OFFHAND_INVENTORY )
 		if ( hasAntiRodeoKit )
 			weapon.SetWeaponPrimaryAmmoCount( weapon.GetWeaponPrimaryAmmoCount() + 2 )
@@ -523,10 +491,15 @@ void function GiveOffhandElectricSmoke( entity titan )
 		titan.GiveOffhandWeapon( CORE_SMOKE_WEAPON, OFFHAND_INVENTORY )
 		entity weapon = titan.GetOffhandWeapon( OFFHAND_INVENTORY )
 
+		// debug
+		//print( "titan start without reward smoke" )
 		// modified here: add npc smoke reward
-		// npc's first smoke won't have ammo, needs to fix it
+		// a npc titan without an owner player's first smoke won't have ammo, needs to fix it
+		// note: CreateAutoTitanForPlayer_FromTitanLoadout's titan won't get an owner immediately, needs to delay
 		if ( titan.IsNPC() )
-			weapon.SetWeaponPrimaryAmmoCount( weapon.GetWeaponPrimaryAmmoCount() + 1 )
+			thread DelayedFixNPCTitanSmokeAmmo( titan, weapon )
+		// can't just use this... still gives player 1 more ammo
+		//weapon.SetWeaponPrimaryAmmoCount( weapon.GetWeaponSettingInt( eWeaponVar.ammo_default_total ) )
 
 		if ( hasAntiRodeoKit )
 		{
@@ -549,6 +522,26 @@ void function GiveOffhandElectricSmoke( entity titan )
 		{
 			// only allow smoke usage for npcs if settings enabled, so it won't waste smoke
 			rewardSmoke.AllowUse( PlayerEarnMeter_IsSoulNPCTitanEarnMeterSmokeUsageEnabled( soul ) )
+		}
+	}
+}
+
+// CreateAutoTitanForPlayer_FromTitanLoadout's titan won't get an owner immediately, needs to delay
+void function DelayedFixNPCTitanSmokeAmmo( entity titan, entity smokeWeapon )
+{
+	titan.EndSignal( "OnDestroy" )
+	smokeWeapon.EndSignal( "OnDestroy" )
+	WaitEndFrame() // wait for titan owner being assigned in spawn func
+
+	entity soul = titan.GetTitanSoul()
+	if ( IsValid( soul ) )
+	{
+		entity owner = soul.GetBossPlayer()
+		if ( !IsValid( owner ) )
+		{
+			// debug
+			//print( "titan is not pet titan, adding extra ammo" )
+			smokeWeapon.SetWeaponPrimaryAmmoCount( smokeWeapon.GetWeaponPrimaryAmmoCount() + 1 )
 		}
 	}
 }

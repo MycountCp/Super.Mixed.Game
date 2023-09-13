@@ -85,7 +85,7 @@ void function InitPlayerForScoreEvents( entity player )
 
 // idk why forth arg is a string, maybe it should be a var type?
 //void function AddPlayerScore( entity targetPlayer, string scoreEventName, entity associatedEnt = null, string noideawhatthisis = "", int pointValueOverride = -1 )
-void function AddPlayerScore( entity targetPlayer, string scoreEventName, entity associatedEnt = null, var displayTypeOverride = null, int pointValueOverride = -1 )
+void function AddPlayerScore( entity targetPlayer, string scoreEventName, entity associatedEnt = null, var displayTypeOverride = null, int pointValueOverride = -1, float earnMeterPercentage = -1 )
 {
 	// modified: adding score event override
 	if ( scoreEventName in file.scoreEventNameOverride )
@@ -103,15 +103,22 @@ void function AddPlayerScore( entity targetPlayer, string scoreEventName, entity
 	var associatedHandle = 0
 	if ( associatedEnt != null )
 		associatedHandle = associatedEnt.GetEncodedEHandle()
-		
+	
 	if ( pointValueOverride != -1 )
-		event.pointValue = pointValueOverride 
+		event.pointValue = pointValueOverride
 	
 	float earnScale = targetPlayer.IsTitan() ? 0.0 : 1.0 // titan shouldn't get any earn value
 	float ownScale = targetPlayer.IsTitan() ? event.coreMeterScalar : 1.0
 	
 	float earnValue = event.earnMeterEarnValue * earnScale
 	float ownValue = event.earnMeterOwnValue * ownScale
+
+	// fix score event value override
+	if ( earnMeterPercentage != -1 )
+	{
+		earnValue *= earnMeterPercentage
+		ownValue *= earnMeterPercentage
+	}
 	
 	PlayerEarnMeter_AddEarnedAndOwned( targetPlayer, earnValue, ownValue ) //( targetPlayer, earnValue * scale, ownValue * scale ) // seriously? this causes a value*scale^2
 	
@@ -469,7 +476,7 @@ void function NotifyClientsOfTitanDeath( entity victim, entity attacker, var dam
 			attacker = GetEntByIndex( 0 ) // worldspawn
 	}
 
-	int attackerEHandle = -1
+	int attackerEHandle = victim.GetEncodedEHandle() // by default we just use victim's EHandle
 	// ServerCallback_OnTitanKilled() is not using "GetHeavyWeightEntityFromEncodedEHandle()"
 	// which means we can't pass a non-heavy weighted entity into it
 	// non-heavy weighted entity including projectile stuffs
@@ -502,7 +509,7 @@ void function ScoreEvent_NPCKilled( entity victim, entity attacker, var damageIn
 
 	// headshot
 	if ( DamageInfo_GetCustomDamageType( damageInfo ) & DF_HEADSHOT )
-		AddPlayerScore( attacker, "Headshot", victim )
+		AddPlayerScore( attacker, "Headshot", victim, null, -1, 0.0 ) // no value earn from npc headshots
 
 	// mayhem and onslaught, doesn't add any score but vanilla has this event
 	// mayhem killstreak broke
@@ -569,31 +576,35 @@ void function ScoreEvent_SetupEarnMeterValuesForMixedModes() // mixed modes in t
 		return
 
 	// pilot kill
-	ScoreEvent_SetEarnMeterValues( "KillPilot", 0.075, 0.075, 0.67 )
-	ScoreEvent_SetEarnMeterValues( "EliminatePilot", 0.075, 0.075, 0.67 )
-	ScoreEvent_SetEarnMeterValues( "PilotAssist", 0.035, 0.035, 0.0 )
+	ScoreEvent_SetEarnMeterValues( "KillPilot", 0.10, 0.05 )
+	ScoreEvent_SetEarnMeterValues( "EliminatePilot", 0.10, 0.05 )
+	ScoreEvent_SetEarnMeterValues( "PilotAssist", 0.04, 0.01, 0.0 )
 	// titan kill
 	ScoreEvent_SetEarnMeterValues( "DoomTitan", 0.0, 0.0 )
-	ScoreEvent_SetEarnMeterValues( "KillTitan", 0.10, 0.15 )
-	ScoreEvent_SetEarnMeterValues( "KillAutoTitan", 0.10, 0.15 )
-	ScoreEvent_SetEarnMeterValues( "EliminateTitan", 0.10, 0.15 )
-	ScoreEvent_SetEarnMeterValues( "EliminateAutoTitan", 0.10, 0.15 )
-	ScoreEvent_SetEarnMeterValues( "TitanKillTitan", 0.0, 0.15 )
+	// don't know why titan kills appear to be no value in vanilla
+	// was set to 0.10, 0.15
+	// in vanilla all values seems to be pilot kill only
+	ScoreEvent_SetEarnMeterValues( "KillTitan", 0.0, 0.0 )
+	ScoreEvent_SetEarnMeterValues( "KillAutoTitan", 0.0, 0.0 )
+	ScoreEvent_SetEarnMeterValues( "EliminateTitan", 0.0, 0.0 )
+	ScoreEvent_SetEarnMeterValues( "EliminateAutoTitan", 0.0, 0.0 )
+	ScoreEvent_SetEarnMeterValues( "TitanKillTitan", 0.0, 0.0 )
+	// but titan assist do have earn values...
 	ScoreEvent_SetEarnMeterValues( "TitanAssist", 0.10, 0.10 )
 	// rodeo
 	ScoreEvent_SetEarnMeterValues( "PilotBatteryStolen", 0.0, 0.35, 0.0 )
 	ScoreEvent_SetEarnMeterValues( "PilotBatteryApplied", 0.0, 0.35, 0.0 )
 	// special method of killing
-	ScoreEvent_SetEarnMeterValues( "Headshot", 0.0, 0.0, 0.0 )
-	ScoreEvent_SetEarnMeterValues( "FirstStrike", 0.025, 0.025, 0.0 )
+	ScoreEvent_SetEarnMeterValues( "Headshot", 0.0, 0.02, 0.0 )
+	ScoreEvent_SetEarnMeterValues( "FirstStrike", 0.04, 0.01, 0.0 )
 	
 	// ai
-	ScoreEvent_SetEarnMeterValues( "KillGrunt", 0.02, 0.02, 0.5 )
-	ScoreEvent_SetEarnMeterValues( "KillSpectre", 0.02, 0.02, 0.5 )
-	ScoreEvent_SetEarnMeterValues( "LeechSpectre", 0.02, 0.02 )
-	ScoreEvent_SetEarnMeterValues( "KillHackedSpectre", 0.02, 0.02, 0.5 )
-	ScoreEvent_SetEarnMeterValues( "KillStalker", 0.02, 0.02, 0.5 )
-	ScoreEvent_SetEarnMeterValues( "KillSuperSpectre", 0.10, 0.10, 0.5 )
+	ScoreEvent_SetEarnMeterValues( "KillGrunt", 0.03, 0.01 )
+	ScoreEvent_SetEarnMeterValues( "KillSpectre", 0.03, 0.01 )
+	ScoreEvent_SetEarnMeterValues( "LeechSpectre", 0.03, 0.01 )
+	ScoreEvent_SetEarnMeterValues( "KillHackedSpectre", 0.03, 0.01 )
+	ScoreEvent_SetEarnMeterValues( "KillStalker", 0.03, 0.01 )
+	ScoreEvent_SetEarnMeterValues( "KillSuperSpectre", 0.15, 0.05 )
 	ScoreEvent_SetEarnMeterValues( "KillLightTurret", 0.05, 0.05 )
 }
 

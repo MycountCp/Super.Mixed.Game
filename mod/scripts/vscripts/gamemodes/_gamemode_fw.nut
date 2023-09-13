@@ -160,9 +160,13 @@ void function GamemodeFW_Init()
 	AddCallback_OnTitanBecomesPilot( OnFWTitanBecomesPilot )
 
 	ScoreEvent_SetupEarnMeterValuesForMixedModes()
+	SetUpFWScoreEvents()
 	SetRecalculateRespawnAsTitanStartPointCallback( FW_ForcedTitanStartPoint )
 	SetRecalculateTitanReplacementPointCallback( FW_ReCalculateTitanReplacementPoint )
 	SetRequestTitanAllowedCallback( FW_RequestTitanAllowed )
+
+	// tempfix specifics
+	EarnMeterMP_SetPassiveGainProgessEnable( true ) // enable earnmeter gain progressing like vanilla
 }
 
 
@@ -314,7 +318,6 @@ void function RateSpawnpoints_FW( array<entity> startSpawns, int checkClass, arr
 
 void function OnFWGamePrematch()
 {
-	InitFWScoreEvents()
 	FW_createHarvester()
 	InitFWCampSites()
 	InitCampSpawnerLevel()
@@ -372,7 +375,7 @@ void function OnFWTitanBecomesPilot( entity player, entity titan )
 ///// SCORE EVENT FUNCTIONS /////
 /////////////////////////////////
 
-void function InitFWScoreEvents()
+void function SetUpFWScoreEvents()
 {
 	// common scoreEvents
 	ScoreEvent_SetEarnMeterValues( "KillHeavyTurret", 0.0, 0.20 ) // can only adds to titan's in this mode

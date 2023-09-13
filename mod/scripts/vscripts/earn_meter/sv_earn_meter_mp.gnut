@@ -7,21 +7,30 @@ global function EarnMeterMP_SetBoostByRef
 // modified settings...
 global function EarnMeterMP_SetPassiveGainProgessEnable
 
-const float EARNMETER_GAIN_FRAC				= 0.01
-const float EARNMETER_GAIN_INTERVAL			= 5.0
-const float EARNMETER_GAIN_INTERVAL_MIN		= 2.0
-const float EARNMETER_GAIN_MAX_LEVEL		= 0.8 // if score or time reaches this percentage, we will use EARNMETER_GAIN_INTERVAL_MIN
+// when client display a 99% frac, server actually has "0.989999"
+// needs to add a small amount to avoid earnmeter displays as 99% but player can't earn goal
+// this also fixes player can't gain reward when their meter is right at required value
+const float EARNMETER_FRAC_FIX				= 0.0001
 
-struct 
+const float EARNMETER_GAIN_FRAC				= 0.01 + EARNMETER_FRAC_FIX
+const float EARNMETER_GAIN_INTERVAL			= 5.0
+const float EARNMETER_GAIN_INTERVAL_MIN		= 1.0
+const float EARNMETER_GAIN_MAX_LEVEL		= 0.9 // if time reaches this percentage, we will use EARNMETER_GAIN_INTERVAL_MIN
+
+struct
 {
-	array<string> catchedUpUIDs
+	// these are purely in-file and no need to change
+	array<string> catchedUpUIDs // for northstar specific
+	// in vanilla, only passive gain triggers EarnMeter_DecayHold()
+	table<entity, float> playerLastPassiveGainTime
+	//
 
 	float playingStartTime
 	bool passiveMeterGainEnabled = true
 
-	// modified settings...
+	// vanilla behavior settings...
 	float passiveMeterGainInterval = EARNMETER_GAIN_INTERVAL
-	bool passiveGainProgressEnabled = true // like vanilla
+	bool passiveGainProgressEnabled = false // vanilla seems only enable this in few gamemodes( mostly titan allowed modes )
 } file
 
 void function Sv_EarnMeterMP_Init()
@@ -29,9 +38,16 @@ void function Sv_EarnMeterMP_Init()
 	if ( !EARNMETER_ENABLED )
 		return
 
-	AddCallback_OnClientConnected( SetupPlayerEarnMeter )
+	// shouldn't use SetupPlayerEarnMeter on connected
+	//AddCallback_OnClientConnected( SetupPlayerEarnMeter )
+	AddCallback_OnClientConnected( OnClientConnected )
 	AddCallback_GameStateEnter( eGameState.Playing, OnPlaying ) // can't change boost after prematch
 	AddCallback_OnPlayerRespawned( OnPlayerRespawned )
+	// move here from sv_earn_meter.gnut
+	RegisterSignal( "EarnMeterDecayThink" )
+	RegisterSignal( "OverDriveClearOnDeath" )
+	// progressing earnmeter frac
+	EarnMeterMP_ProgessFracCalculate()
 }
 
 void function EarnMeterMP_SetTitanLoadout( entity player )
@@ -54,22 +70,32 @@ void function EarnMeterMP_SetPassiveGainProgessEnable( bool enabled )
 }
 //
 
+void function OnClientConnected( entity player )
+{
+	SetupPlayerEarnMeter( player )
+
+	// catchup bonus for late joiners
+	thread DelayedCatchUpEarnMeter( player )
+	// note: needs to delay otherwise it won't work
+	// todo: maths on this is fine but for some reason it won't set correctly, could be getting reset somewhere?
+	// PlayerEarnMeter_AddOwnedFrac( player, ( ( Time() - file.playingStartTime ) / 4.0 ) * 0.01 )
+
+	// vanilla behavior recover
+	file.playerLastPassiveGainTime[ player ] <- 0.0
+}
+
 void function SetupPlayerEarnMeter( entity player )
 {
 	PlayerEarnMeter_Reset( player )
 
 	string burncardRef = GetSelectedBurnCardRef( player )
 	EarnMeterMP_SetBoostByRef( player, burncardRef )
-
-	// catchup bonus for late joiners
-	// todo: maths on this is fine but for some reason it won't set correctly, could be getting reset somewhere?
-	thread DelayedCatchUpEarnMeter( player ) // trying to do this
-	// PlayerEarnMeter_AddOwnedFrac( player, ( ( Time() - file.playingStartTime ) / 4.0 ) * 0.01 )
 }
 
 void function DelayedCatchUpEarnMeter( entity player )
 {
-	WaitFrame()
+	WaitFrame() // wait for earnmeter being reset
+	// for northstar, since players can re-connect very easily, we use catchedUpUIDs for storing
 	if( IsValid( player ) && !file.catchedUpUIDs.contains( player.GetUID() ) )
 	{
 		PlayerEarnMeter_AddOwnedFrac( player, ( ( Time() - file.playingStartTime ) / EARNMETER_GAIN_INTERVAL ) * EARNMETER_GAIN_FRAC )
@@ -94,17 +120,15 @@ void function OnPlaying()
 	}
 
 	SetCallback_EarnMeterGoalEarned( EarnMeterMP_TitanEarned )
-
-	// progress earnmeter frac
-	thread EarnMeterMP_ProgessFracCalculate()
 }
 
 void function OnPlayerRespawned( entity player )
 {
 	thread EarnMeterMP_PlayerLifeThink( player )
 
-	if ( PlayerEarnMeter_IsRewardAvailable( player ) )
-		EarnMeterMP_BoostEarned( player )
+	// what is this call?
+	//if ( PlayerEarnMeter_IsRewardAvailable( player ) )
+	//	EarnMeterMP_BoostEarned( player )
 }
 
 void function EarnMeterMP_ReplaceReward( entity player, EarnObject reward, float rewardFrac )
@@ -112,11 +136,17 @@ void function EarnMeterMP_ReplaceReward( entity player, EarnObject reward, float
 	PlayerEarnMeter_Reset( player )
 	if ( reward.id < 0 )
 		return
-	PlayerEarnMeter_SetReward( player, reward )
-	PlayerEarnMeter_SetRewardFrac( player, rewardFrac )
-
-	if( PlayerEarnMeter_GetRewardFrac( player ) != 0 )
-		PlayerEarnMeter_EnableReward( player )
+	
+	// fix reward icon
+	if ( player.IsTitan() || Riff_BoostAvailability() != eBoostAvailability.Disabled )
+	{
+		PlayerEarnMeter_SetReward( player, reward )
+		PlayerEarnMeter_SetRewardFrac( player, rewardFrac )
+		// only enable reward if our last reward is valid
+		if( ( PlayerEarnMeter_GetMode( player ) == eEarnMeterMode.DEFAULT || PlayerEarnMeter_GetMode( player ) == eEarnMeterMode.CORE )
+			&& PlayerEarnMeter_GetRewardFrac( player ) != 0 )
+			PlayerEarnMeter_EnableReward( player )
+	}
 }
 
 void function EarnMeterMP_PlayerLifeThink( entity player )
@@ -127,10 +157,13 @@ void function EarnMeterMP_PlayerLifeThink( entity player )
 	EarnObject pilotReward = PlayerEarnMeter_GetReward( player ) 
 	float pilotRewardFrac = PlayerEarnMeter_GetRewardFrac( player )
 	int lastEarnMeterMode = PlayerEarnMeter_GetMode( player )
-	float lastPassiveGainTime = Time()
 
 	// on respawn: If titan avaliable and we're nearly reach it, do a dialogue
 	TryTitanSoonAnnouncement( player )
+	// move here from sv_earn_meter.gnut
+	// in vanilla, only passive gain triggers EarnMeter_DecayHold()
+	// which means you'll drop less overdrive when the match is near end
+	thread EarnMeterDecayThink( player )
 
 	OnThreadEnd(
 		function() : ( player, pilotReward, pilotRewardFrac )
@@ -148,14 +181,15 @@ void function EarnMeterMP_PlayerLifeThink( entity player )
 	while ( true )
 	{
 		if( GetGameState() < eGameState.Playing ) // Prematch
-			lastPassiveGainTime = Time()
+			file.playerLastPassiveGainTime[ player ] = Time() // reset gain timer
 		
 		int desiredEarnMeterMode
+		entity petTitan = player.GetPetTitan()
 		entity soul = player.GetTitanSoul() // move out of if-else cases
 
 		if ( player.IsTitan() )
 		{
-			lastPassiveGainTime = Time() // staying in titan should reset earnmeter gain timer
+			file.playerLastPassiveGainTime[ player ] = Time() // staying in titan should reset earnmeter gain timer
 			
 			if ( IsValid( soul ) ) // stupid anti-crash, possibly no need
 			{
@@ -166,8 +200,12 @@ void function EarnMeterMP_PlayerLifeThink( entity player )
 					desiredEarnMeterMode = eEarnMeterMode.CORE
 			}
 		}
-		else if ( IsValid( player.GetPetTitan() ) )
+		//else if ( IsValid( player.GetPetTitan() ) )
+		else if ( IsValid( petTitan ) )
+		{
+			file.playerLastPassiveGainTime[ player ] = Time() // having a pet titan should reset earnmeter gain timer
 			desiredEarnMeterMode = eEarnMeterMode.PET
+		}
 		else
 			desiredEarnMeterMode = eEarnMeterMode.DEFAULT
 
@@ -181,7 +219,10 @@ void function EarnMeterMP_PlayerLifeThink( entity player )
 			}
 
 			if ( desiredEarnMeterMode == eEarnMeterMode.DEFAULT ) // Only occurs when auto titan dies. Resets reward progress and reverts it back to boost.
+			{
 				EarnMeterMP_ReplaceReward( player, pilotReward, pilotRewardFrac )
+				PlayerEarnMeter_EnableGoal( player ) // re-enable goal
+			}
 			else if ( desiredEarnMeterMode == eEarnMeterMode.CORE ) // Replace the pilot's earn meter reward with smoke when they enter their titan.
 			{
 				EarnMeterMP_ReplaceReward( player, EarnObject_GetByRef( "core_electric_smoke" ), CORE_SMOKE_FRAC )
@@ -204,8 +245,15 @@ void function EarnMeterMP_PlayerLifeThink( entity player )
 			lastEarnMeterMode = desiredEarnMeterMode
 		}
 
+		// below is default earnmeter looping case
 		if ( lastEarnMeterMode == eEarnMeterMode.DEFAULT )
 		{
+			//print( "Reward enabled: " + string( PlayerEarnMeter_IsRewardEnabled( player ) ) )
+
+			// Removed... client doesn't seem to show "titan ready" in goal ready case
+			// the alerts only shown when SetTitanAvailable() is used
+			// looping to refresh goal seems bad
+			/*
 			if ( PlayerEarnMeter_GetOwnedFrac( player ) < 1.0 )
 				PlayerEarnMeter_DisableGoal( player )
 			else if ( player.GetPlayerNetInt( "goalState" ) != eRewardState.UNAVAILABLE )
@@ -216,11 +264,12 @@ void function EarnMeterMP_PlayerLifeThink( entity player )
 				player.SetPlayerNetInt( "goalState", eRewardState.AVAILABLE )
 				PlayerEarnMeter_RefreshGoal( player )
 			}
+			*/
 
-			if ( Time() - lastPassiveGainTime >= file.passiveMeterGainInterval && file.passiveMeterGainEnabled ) // this might be 5.0
+			if ( Time() - file.playerLastPassiveGainTime[ player ] >= file.passiveMeterGainInterval && file.passiveMeterGainEnabled ) // this might be 5.0
 			{
-				lastPassiveGainTime = Time()
 				PlayerEarnMeter_AddOwnedFrac( player, EARNMETER_GAIN_FRAC )
+				file.playerLastPassiveGainTime[ player ] = Time() // update last passive gain time
 			}
 		}
 
@@ -257,6 +306,9 @@ bool function ShouldDoTitanSoonAnnouncement( entity player )
 
 void function EarnMeterMP_BoostEarned( entity player )
 {
+	// debug
+	//print ( "RUNNING EarnMeterMP_BoostEarned()" )
+
 	// Can't have smoke earned via meter. Otherwise, Auto Titan could hit reward frac and get nothing
 	if( player.IsTitan() )
 		return
@@ -288,13 +340,18 @@ void function EarnMeterMP_TitanEarned( entity player )
 	}
 	else
 	{
-		float oldRewardFrac = PlayerEarnMeter_GetRewardFrac( player )
+		float oldRewardFrac = PlayerEarnMeter_GetRewardFrac( player ) // get reward frac before it gets reset
 		PlayerEarnMeter_Reset( player )
-		PlayerEarnMeter_SetRewardFrac( player, oldRewardFrac )
-		PlayerEarnMeter_EnableReward( player )
-
-		if ( PlayerEarnMeter_GetRewardFrac( player ) != 0 )
-			PlayerEarnMeter_EnableReward( player )
+		// don't enable reward if we've disabled it, otherwise the icon will be shown incorrectly
+		if ( Riff_BoostAvailability() != eBoostAvailability.Disabled )
+		{
+			if ( oldRewardFrac > 0 )
+			{
+				PlayerEarnMeter_SetRewardFrac( player, oldRewardFrac )
+				PlayerEarnMeter_EnableReward( player )
+			}
+		}
+		PlayerEarnMeter_EnableGoal( player ) // re-enable goal
 	}
 }
 
@@ -310,65 +367,175 @@ void function EarnMeterMP_SetBoostByRef( entity player, string boostRef )
 		PlayerEarnMeter_EnableReward( player )
 	}
 
+	// goal should always been enabled
+	PlayerEarnMeter_EnableGoal( player )
 	if ( EarnMeterMP_IsTitanEarnGametype() )
 	{
 		PlayerEarnMeter_SetGoal( player, EarnObject_GetByRef( GetTitanLoadoutForPlayer( player ).titanClass ) )
-		PlayerEarnMeter_EnableGoal( player ) // prevents goalstate from being set incorrectly
+		//PlayerEarnMeter_EnableGoal( player ) // prevents goalstate from being set incorrectly
 	}
 	else
 		PlayerEarnMeter_SetGoal( player, earnobject )
 }
 
-// progressFrac calculate, no support for roundbased mode
+// move here from sv_earn_meter.gnut
+// in vanilla, only passive gain triggers EarnMeter_DecayHold()
+// which means you'll drop less overdrive when the match is near end
+void function EarnMeterDecayThink( entity player )
+{
+	player.EndSignal( "OnDestroy" )
+	player.EndSignal( "OnDeath" )
+	player.Signal( "EarnMeterDecayThink" ) // prevent this instance running multiple times
+	player.EndSignal( "EarnMeterDecayThink" )
+
+	thread OverDriveClearOnDeath( player )
+
+	//float startTime = Time()
+	while ( true )
+	{
+		WaitFrame() // wait before each loop
+		//float frameTime = Time() - startTime
+		//startTime = Time()
+
+		entity titan = GetTitanFromPlayer( player )
+		if ( IsValid( titan ) ) // wait for titan being destroyed
+			continue
+
+		// decay hold think
+		float decayHoldEndTime = file.playerLastPassiveGainTime[ player ] + EarnMeter_DecayHold() + 0.1 // add 0.1s more for better handle min interval
+		// if player in decay hold, we never reduce their earnmeter frac
+		if ( Time() < decayHoldEndTime )
+			continue
+
+		float earnedValue = PlayerEarnMeter_GetEarnedFrac( player )
+		float ownedValue = PlayerEarnMeter_GetOwnedFrac( player )
+		if ( earnedValue > ownedValue )
+		{
+			// 10% over 20 seconds
+			float decayRate = ( 1.0 / 135.0 ) * 0.1 // 0.1 is for 1tick
+			float diff = earnedValue - ownedValue
+			decayRate = min( decayRate, diff )
+			PlayerEarnMeter_AddEarnedFrac( player, -decayRate )
+		}
+	}
+}
+
+void function OverDriveClearOnDeath( entity player )
+{
+	player.EndSignal( "OnDestroy" )
+	player.Signal( "OverDriveClearOnDeath" ) // prevent this instance running multiple times
+	player.EndSignal( "OverDriveClearOnDeath" )
+	player.WaitSignal( "OnDeath" )
+
+	float earnedValue = PlayerEarnMeter_GetEarnedFrac( player )
+	float ownedValue = PlayerEarnMeter_GetOwnedFrac( player )
+	if ( earnedValue > ownedValue )
+	{
+		float diff = earnedValue - ownedValue
+		PlayerEarnMeter_AddEarnedFrac( player, -diff )
+	}
+}
+
+// progressFrac calculate
+// vanilla seems only enable this in few gamemodes( mostly titan allowed modes such as aitdm and tdm )
 void function EarnMeterMP_ProgessFracCalculate()
 {
-	if ( IsRoundBased() )
-		return
+	thread EarnMeterMP_ProgessFracCalculate_Threaded()
+}
 
+void function EarnMeterMP_ProgessFracCalculate_Threaded()
+{
 	// progressFrac calculate
-	while ( GetGameState() == eGameState.Playing )
+	while ( true )
 	{
-		float startTime = file.playingStartTime
-		// could cache these, but what if we update it midgame?
-		float endTime = expect float( GetServerVar( "gameEndTime" ) )
-		//if( IsSwitchSidesBased() ) // this has already being calculated in gamestate_mp, don't do it again
-		//	endTime /= 2
-			
-		float totalTime = endTime - startTime
-		float maxLevelTime = totalTime * EARNMETER_GAIN_MAX_LEVEL
-		
-		int totalScore = GameMode_GetScoreLimit( GAMETYPE )
-		if( IsRoundBased() )
-			totalScore = GameMode_GetRoundScoreLimit( GAMETYPE )
-		int maxLevelScore = int( totalScore * EARNMETER_GAIN_MAX_LEVEL )
+		WaitFrame() // always wait before each loop
 
-		// base frac based on gameTime
-		float timeElapsed = Time() - startTime
-		float timeLevel = timeElapsed / maxLevelTime
-		
-		// calculate again based on team scores
-		float scoreLevel = 0.0
-		if ( !IsSwitchSidesBased() ) // we don't do scoreLevel in switchSideBased modes
+		// no support for roundbased mode
+		if ( IsRoundBased() )
 		{
-			int winningTeam = GetWinningTeamWithFFASupport() // GetWinningTeam() won't be set up if match hasn't end yet
-			if ( winningTeam < TEAM_UNASSIGNED ) // no valid winner
-				winningTeam = TEAM_UNASSIGNED
-			int highestScore = GameRules_GetTeamScore( winningTeam )
-
-			scoreLevel = float( highestScore ) / float( maxLevelScore )
+			file.passiveMeterGainInterval = EARNMETER_GAIN_INTERVAL
+			continue
 		}
 
-		// get max level
-		float gainLevel = max( timeLevel, scoreLevel )
-		if ( gainLevel >= 1.0 )
-			gainLevel = 1.0
-		//print( "gainLevel: " + string( gainLevel ) )
-		// get max time reduction
-		float maxIntervalReduction = EARNMETER_GAIN_INTERVAL - EARNMETER_GAIN_INTERVAL_MIN
+		// not enabled settings
+		if ( !file.passiveGainProgressEnabled )
+		{
+			file.passiveMeterGainInterval = EARNMETER_GAIN_INTERVAL
+			continue
+		}
 
-		if( file.passiveGainProgressEnabled )
+		// in prematch or something
+		if ( GetGameState() < eGameState.Playing )
+		{
+			file.passiveMeterGainInterval = EARNMETER_GAIN_INTERVAL
+			continue
+		}
+
+		// sudden death or epilogue: always maxnium earnmeter gain
+		// vanilla doesn't seem to have this behavior
+		// they just keep the value calculated from playing state
+		if ( GetGameState() == eGameState.Epilogue || GetGameState() == eGameState.SuddenDeath )
+		{
+			//file.passiveMeterGainInterval = EARNMETER_GAIN_INTERVAL_MIN
+			continue
+		}
+
+		// generic calculation while game playing
+		if ( GetGameState() == eGameState.Playing )
+		{
+			float startTime = file.playingStartTime
+			// could cache these, but what if we update it midgame?
+			float endTime = expect float( GetServerVar( "gameEndTime" ) )
+			//if( IsSwitchSidesBased() ) // this has already being calculated in gamestate_mp, don't do it again
+			//	endTime /= 2
+				
+			float totalTime = endTime - startTime
+			float maxLevelTime = totalTime * EARNMETER_GAIN_MAX_LEVEL
+			
+			// vanilla doesn't seem to have progress based on score
+			// they only calculate based on time...
+			/*
+			int totalScore = GameMode_GetScoreLimit( GAMETYPE )
+			if( IsRoundBased() )
+				totalScore = GameMode_GetRoundScoreLimit( GAMETYPE )
+			int maxLevelScore = int( totalScore * EARNMETER_GAIN_MAX_LEVEL )
+			*/
+
+			// base frac based on gameTime
+			float timeElapsed = Time() - startTime
+			float timeLevel = timeElapsed / maxLevelTime
+			
+			// vanilla doesn't seem to have progress based on score
+			// they only calculate based on time...
+			/*
+			// calculate again based on team scores
+			float scoreLevel = 0.0
+			if ( !IsSwitchSidesBased() ) // we don't do scoreLevel in switchSideBased modes
+			{
+				int winningTeam = GetWinningTeamWithFFASupport() // GetWinningTeam() won't be set up if match hasn't end yet
+				if ( winningTeam < TEAM_UNASSIGNED ) // no valid winner
+					winningTeam = TEAM_UNASSIGNED
+				int highestScore = GameRules_GetTeamScore( winningTeam )
+
+				scoreLevel = float( highestScore ) / float( maxLevelScore )
+			}
+			*/
+
+			// get max level
+			// vanilla doesn't seem to have progress based on score
+			// they only calculate based on time...
+			//float gainLevel = max( timeLevel, scoreLevel )
+			float gainLevel = timeLevel
+			if ( gainLevel >= 1.0 )
+				gainLevel = 1.0
+			//print( "gainLevel: " + string( gainLevel ) )
+			// get max time reduction
+			float maxIntervalReduction = EARNMETER_GAIN_INTERVAL - EARNMETER_GAIN_INTERVAL_MIN
+
 			file.passiveMeterGainInterval = EARNMETER_GAIN_INTERVAL - ( maxIntervalReduction * gainLevel )
-		//print( "passiveMeterGainInterval: " + string( file.passiveMeterGainInterval ) )
-		WaitFrame()
+			//print( "passiveMeterGainInterval: " + string( file.passiveMeterGainInterval ) )
+
+			continue
+		}
 	}
 }

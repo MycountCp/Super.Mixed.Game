@@ -1,4 +1,4 @@
-global function Modded_Gamemode_Fake_Titanfall1_Init
+global function GameModifier_Fake_Titanfall1_Init
 
 const int TITAN_SHIELD_BASE = 1000 // every chassis will have 1000 shield by default
 const int TITAN_SHIELD_PER_SEGMENT = 500 // shield value scale with health segments
@@ -6,6 +6,9 @@ const int TITAN_HEALTH_PER_SEGMENT = 1500
 const float TITAN_DOOMED_HEALTH_FRAC = 1.0 // fake ttf1 behavior: doomed health is almost same as undoomed health
 // needs to rework most of the titancore ability before we can use this...
 const bool DISABLE_TITAN_CORE_ON_DOOM = false
+
+const bool ENABLE_ALWAYS_FAST_REGEN = false
+const float PILOT_HEALTH_MULTIPLAYER = 1.25
 
 const string ANSI_COLOR_END = "\x1b[0m"
 const string ANSI_COLOR_BLUE = "\x1b[38;5;81m"
@@ -19,7 +22,9 @@ const array<string> CONNECTING_NOTIFICATIONS =
 	ANSI_COLOR_ORANGE + "泰坦在被拔去电池后可以被直接攻击电池舱，造成破盾伤害" + ANSI_COLOR_END,
 	ANSI_COLOR_ORANGE + "泰坦护盾自动恢复，但护盾仅提供减伤，无法完全免除伤害" + ANSI_COLOR_END,
 	ANSI_COLOR_ORANGE + "泰坦蓝血上限下降，黄血上限增加但会自动流失" + ANSI_COLOR_END,
-    ANSI_COLOR_ORANGE + "泰坦自带快速恢复冲刺，若装备涡轮引擎将替换为超级核心" + ANSI_COLOR_END,
+    ANSI_COLOR_ORANGE + "泰坦自带冲刺+1，快速冲刺恢复（若装备涡轮引擎将替换为超级核心）" + ANSI_COLOR_END,
+    //ANSI_COLOR_BLUE + "铁驭生命值为1.25倍，自带快速恢复血量（若已装备快速恢复将获得强力电池）" + ANSI_COLOR_END,
+    ANSI_COLOR_BLUE + "铁驭生命值为1.25倍，不可用快速恢复（若装备快速恢复将替换为强力电池）" + ANSI_COLOR_END,
 ]
 
 // hard to control.. respawn almost didn't add any support for ttf1-like core meter
@@ -36,12 +41,13 @@ struct
     table<entity, CoreWeapon> soulStoredCoreWeapon
 } file
 
-void function Modded_Gamemode_Fake_Titanfall1_Init()
+void function GameModifier_Fake_Titanfall1_Init()
 {
     // notifications
     AddCallback_OnClientConnected( OnClientConnected )
 
     // score
+    // use prematch for game modifiers to setup score
     AddCallback_GameStateEnter( eGameState.Prematch, SetUpFakeTTF1ScoreEvent )
 
     // rodeo modifier settings!
@@ -63,8 +69,13 @@ void function Modded_Gamemode_Fake_Titanfall1_Init()
     TitanHealth_EnableHealthChickletFX( true ) // modified function in _titan_triple_health.gnut, enable segment lose effect
     Titan_EnableStaggerOnRepeatDamage( true ) // modified in sh_titan.gnut, enable stagger on repeat damage
 
-    AddCallback_OnTitanGetsNewTitanLoadout( OnTitanGetsLoadout ) // titan settings
+    // titan settings
+    AddCallback_OnTitanGetsNewTitanLoadout( OnTitanGetsLoadout )
     AddCallback_OnTitanDoomed( OnTitanDoomed ) // doomed settings
+
+    // pilot settings
+    AddCallback_PlayerClassChanged( OnPlayerChangeClass )
+    AddCallback_OnPlayerGetsNewPilotLoadout( OnPilotGetsLoadout )
 
     // hard to control.. respawn almost didn't add any support for ttf1-like core meter
     #if DISABLE_TITAN_CORE_ON_DOOM
@@ -91,11 +102,15 @@ void function SetUpFakeTTF1ScoreEvent()
 	ScoreEvent_SetEarnMeterValues( "PilotAssist", 0.0, 0.05, 0.0 )
 	// titan kill
 	ScoreEvent_SetEarnMeterValues( "DoomTitan", 0.0, 0.0 )
-	ScoreEvent_SetEarnMeterValues( "KillTitan", 0.0, 0.20 )
-	ScoreEvent_SetEarnMeterValues( "KillAutoTitan", 0.0, 0.20 )
-	ScoreEvent_SetEarnMeterValues( "EliminateTitan", 0.0, 0.20 )
-	ScoreEvent_SetEarnMeterValues( "EliminateAutoTitan", 0.0, 0.20 )
-	ScoreEvent_SetEarnMeterValues( "TitanKillTitan", 0.0, 0.15 )
+    // don't know why titan kills appear to be no value in vanilla
+	// was set to 0.0, 0.20
+	// in vanilla all values seems to be pilot kill only
+	ScoreEvent_SetEarnMeterValues( "KillTitan", 0.0, 0.0 )
+	ScoreEvent_SetEarnMeterValues( "KillAutoTitan", 0.0, 0.0 )
+	ScoreEvent_SetEarnMeterValues( "EliminateTitan", 0.0, 0.0 )
+	ScoreEvent_SetEarnMeterValues( "EliminateAutoTitan", 0.0, 0.0 )
+	ScoreEvent_SetEarnMeterValues( "TitanKillTitan", 0.0, 0.0 )
+	// but titan assist do have earn values...
 	ScoreEvent_SetEarnMeterValues( "TitanAssist", 0.0, 0.15 )
 	// rodeo
 	ScoreEvent_SetEarnMeterValues( "PilotBatteryStolen", 0.0, 0.20, 0.0 )
@@ -111,8 +126,8 @@ void function SetUpFakeTTF1ScoreEvent()
 	ScoreEvent_SetEarnMeterValues( "KillHackedSpectre", 0.0, 0.03, 0.34 )
 	ScoreEvent_SetEarnMeterValues( "KillStalker", 0.0, 0.03, 0.5 )
 	ScoreEvent_SetEarnMeterValues( "KillSuperSpectre", 0.0, 0.15, 0.34 )
+    ScoreEvent_SetEarnMeterValues( "KillLightTurret", 0.0, 0.08 )
 	// ai(extended)
-	ScoreEvent_SetEarnMeterValues( "KillLightTurret", 0.0, 0.08 )
 	ScoreEvent_SetEarnMeterValues( "KillProwler", 0.0, 0.03, 0.34 )
 	ScoreEvent_SetEarnMeterValues( "KillDrone", 0.00, 0.02, 0.5 )
 }
@@ -247,6 +262,34 @@ void function OnTitanDoomed( entity titan, var damageInfo )
             titan.TakeOffhandWeapon( OFFHAND_EQUIPMENT )
         }
     #endif // DISABLE_TITAN_CORE_ON_DOOM
+}
+
+void function OnPlayerChangeClass( entity player )
+{
+    if ( !player.IsTitan() && player.GetPlayerSettings() != "spectator" )
+    {
+        player.SetMaxHealth( player.GetMaxHealth() * PILOT_HEALTH_MULTIPLAYER )
+        player.SetHealth( player.GetMaxHealth() )
+    }
+}
+
+void function OnPilotGetsLoadout( entity player, PilotLoadoutDef loadout )
+{
+    // following codesneeds reworked _health_regen.gnut
+    // otherwise it won't work due to respawn's hardcode
+
+    #if ENABLE_ALWAYS_FAST_REGEN // all players have PAS_FAST_HEALTH_REGEN, replace exisiting ones with PAS_POWER_CELL
+        if ( PlayerHasPassive( player, ePassives.PAS_FAST_HEALTH_REGEN ) )
+            GivePassive( player, ePassives.PAS_POWER_CELL )
+        else
+            GivePassive( player, ePassives.PAS_FAST_HEALTH_REGEN )
+    #else // remove PAS_FAST_HEALTH_REGEN for all players, existing ones replaced with PAS_POWER_CELL
+        if ( PlayerHasPassive( player, ePassives.PAS_FAST_HEALTH_REGEN ) )
+        {
+            TakePassive( player, ePassives.PAS_FAST_HEALTH_REGEN )
+            GivePassive( player, ePassives.PAS_POWER_CELL )
+        }
+    #endif // ENABLE_ALWAYS_FAST_REGEN
 }
 
 #if DISABLE_TITAN_CORE_ON_DOOM

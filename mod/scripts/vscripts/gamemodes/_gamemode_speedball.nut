@@ -40,10 +40,9 @@ void function GamemodeSpeedball_Init()
 		Riff_ForceTitanAvailability( eTitanAvailability.Never )
 		Riff_ForceSetEliminationMode( eEliminationMode.Pilots )
 		ScoreEvent_SetupEarnMeterValuesForMixedModes()
+		SetUpSpeedBallScoreEvent() // northstar missing
 
 		AddSpawnCallbackEditorClass( "script_ref", "info_speedball_flag", CreateFlag )
-
-		AddCallback_GameStateEnter( eGameState.Prematch, SetUpSpeedBallScoreEvent ) // northstar missing
 		AddCallback_OnClientConnected( OnClientConnected )
 
 		AddCallback_GameStateEnter( eGameState.Prematch, CreateFlagIfNoFlagSpawnpoint )
@@ -65,7 +64,8 @@ void function GamemodeSpeedball_Init()
 // livefire do have stronger score events
 void function SetUpSpeedBallScoreEvent()
 {
-	ScoreEvent_SetEarnMeterValues( "EliminatePilot", 0.15, 0.20 )
+	// override settings
+	ScoreEvent_SetEarnMeterValues( "EliminatePilot", 0.20, 0.15 )
 }
 
 void function OnClientConnected( entity player )
@@ -146,9 +146,16 @@ void function OnPlayerKilled( entity victim, entity attacker, var damageInfo )
 		DropFlag()
 		
 	if ( victim.IsPlayer() && GetGameState() == eGameState.Playing )
+	{
 		if ( GetPlayerArrayOfTeam_Alive( victim.GetTeam() ).len() == 1 )
+		{
 			foreach ( entity player in GetPlayerArray() )
-				Remote_CallFunction_NonReplay( player, "ServerCallback_SPEEDBALL_LastPlayer", player.GetTeam() != victim.GetTeam() )
+			{
+				if ( player.GetTeam() != victim.GetTeam() || player == GetPlayerArrayOfTeam_Alive( victim.GetTeam() )[0] )
+					Remote_CallFunction_NonReplay( player, "ServerCallback_SPEEDBALL_LastPlayer", player.GetTeam() != victim.GetTeam() )
+			}
+		}
+	}
 }
 
 void function GiveFlag( entity player )

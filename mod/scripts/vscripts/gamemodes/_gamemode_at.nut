@@ -113,13 +113,14 @@ void function GamemodeAt_Init()
 
 	// Set-up score callbacks
 	ScoreEvent_SetupEarnMeterValuesForMixedModes()
+	AT_ScoreEventsValueSetUp()
 	AddCallback_OnPlayerKilled( AT_PlayerOrNPCKilledScoreEvent )
 	AddCallback_OnNPCKilled( AT_PlayerOrNPCKilledScoreEvent )
 
 	// Set npc weapons
-	AiGameModes_SetNPCWeapons( "npc_soldier", [ "mp_weapon_rspn101", "mp_weapon_dmr", "mp_weapon_r97", "mp_weapon_lmg" ] )
+	AiGameModes_SetNPCWeapons( "npc_soldier", [ "mp_weapon_hemlok_smg", "mp_weapon_rspn101", "mp_weapon_lmg" ] )
 	AiGameModes_SetNPCWeapons( "npc_spectre", [ "mp_weapon_hemlok_smg", "mp_weapon_doubletake", "mp_weapon_mastiff" ] )
-	AiGameModes_SetNPCWeapons( "npc_stalker", [ "mp_weapon_hemlok_smg", "mp_weapon_lstar", "mp_weapon_mastiff" ] )
+	AiGameModes_SetNPCWeapons( "npc_stalker", [ "mp_weapon_hemlok_smg", "mp_weapon_doubletake", "mp_weapon_mastiff" ] )
 
 	// Gamestate callbacks
 	AddCallback_GameStateEnter( eGameState.Prematch, OnATGamePrematch )
@@ -130,6 +131,9 @@ void function GamemodeAt_Init()
 
 	// Initilaze gamemode entities
 	AddCallback_EntitiesDidLoad( OnEntitiesDidLoad )
+
+	// tempfix specific
+	EarnMeterMP_SetPassiveGainProgessEnable( true ) // enable earnmeter gain progressing like vanilla
 }
 
 void function RateSpawnpoints_AT( int checkclass, array<entity> spawnpoints, int team, entity player )
@@ -145,7 +149,6 @@ void function RateSpawnpoints_AT( int checkclass, array<entity> spawnpoints, int
 
 void function OnATGamePrematch()
 {
-	AT_ScoreEventsValueSetUp()
 }
 
 void function OnATGamePlaying()
@@ -405,16 +408,19 @@ void function OnEntitiesDidLoad()
 
 void function AT_ScoreEventsValueSetUp()
 {
-	ScoreEvent_SetEarnMeterValues( "KillTitan", 0.10, 0.25 )
-	ScoreEvent_SetEarnMeterValues( "KillAutoTitan", 0.10, 0.25 )
-	ScoreEvent_SetEarnMeterValues( "AttritionTitanKilled", 0.10, 0.25 )
-	ScoreEvent_SetEarnMeterValues( "KillPilot", 0.10, 0.15, 0.34 )
-	ScoreEvent_SetEarnMeterValues( "AttritionPilotKilled", 0.10, 0.15, 0.34 )
+	// override settings
+	ScoreEvent_SetEarnMeterValues( "KillPilot", 0.12, 0.10, 0.5 )
+
+	// BH specific
+	// in vanilla all titan kills seems to be 0 value
+	// was set to 0.15, 0.20
+	ScoreEvent_SetEarnMeterValues( "AttritionTitanKilled", 0.0, 0.0 )
+	ScoreEvent_SetEarnMeterValues( "AttritionPilotKilled", 0.12, 0.10, 0.5 )
 	ScoreEvent_SetEarnMeterValues( "AttritionBossKilled", 0.10, 0.25 )
-	ScoreEvent_SetEarnMeterValues( "AttritionGruntKilled", 0.03, 0.04, 0.5 )
-	ScoreEvent_SetEarnMeterValues( "AttritionSpectreKilled", 0.05, 0.05, 0.4 )
-	ScoreEvent_SetEarnMeterValues( "AttritionStalkerKilled", 0.05, 0.05, 0.4 )
-	ScoreEvent_SetEarnMeterValues( "AttritionSuperSpectreKilled", 0.10, 0.20, 0.5 )
+	ScoreEvent_SetEarnMeterValues( "AttritionGruntKilled", 0.05, 0.02 )
+	ScoreEvent_SetEarnMeterValues( "AttritionSpectreKilled", 0.06, 0.04, 0.5 )
+	ScoreEvent_SetEarnMeterValues( "AttritionStalkerKilled", 0.06, 0.04, 0.5 )
+	ScoreEvent_SetEarnMeterValues( "AttritionSuperSpectreKilled", 0.20, 0.10 )
 
 	// HACK
 	foreach ( string eventName in AT_ENABLE_SCOREEVENTS )

@@ -265,7 +265,7 @@ bool function BurnMeter_TryRewardReadyMessage( entity player )
 		return false
 	if ( Time() >= file.playerRewardReadyMessageTime[ player ] )
 	{
-		Remote_CallFunction_Replay( player, "ServerCallback_RewardReadyMessage", Time() - player.s.respawnTime )
+		Remote_CallFunction_Replay( player, "ServerCallback_RewardReadyMessage", Time() - GetPlayerLastRespawnTime( player ) )
 		file.playerRewardReadyMessageTime[ player ] = Time() + 8.0 // shortest wait time in ServerCallback_RewardReadyMessage()
 		return true
 	}
@@ -293,8 +293,9 @@ void function UseBurnCardWeapon( entity weapon, entity player )
 		Remote_CallFunction_Replay( player, "ServerCallback_RewardUsed", BurnReward_GetByRef( ref ).id )
 	RunBurnCardUseFunc( player, ref )
 
-	if ( PlayerEarnMeter_IsRewardAvailable( player ) )
-		PlayerEarnMeter_SetRewardUsed( player )
+	// no need to do reward used state for pilots, vanilla doesn't seem to have this feature
+	//if ( PlayerEarnMeter_IsRewardAvailable( player ) )
+	//	PlayerEarnMeter_SetRewardUsed( player )
 
 	PlayerInventory_PopInventoryItem( player )
 

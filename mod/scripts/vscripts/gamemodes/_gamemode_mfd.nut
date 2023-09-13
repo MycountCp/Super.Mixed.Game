@@ -270,15 +270,26 @@ void function UpdateMarksForKill( entity victim, entity attacker, var damageInfo
 {
 	if ( victim == GetMarked( victim.GetTeam() ) )
 	{
-		if( attacker.IsNPC() || attacker.IsPlayer() ) // sometimes worldSpawn killing a mark will crash all clients, since wolrdSpawn entity don't have a .GetPlayerName() function
+		int attackerEHandle = victim.GetEncodedEHandle() // by default we just use victim's EHandle
+		if ( IsValid( attacker ) )
 		{
-			if( victim.GetParent() != null ) // when victim having a parent, client code sometimes get their's parent's .GetPlayerName() and It will cause a crash if parent not proper entity!
-				victim.ClearParent()
-			MessageToAll( eEventNotifications.MarkedForDeathKill, null, victim, attacker.GetEncodedEHandle() )
+			// sometimes worldSpawn killing a mark will crash all clients, wolrdSpawn entity don't have a .GetPlayerName() function
+			if ( attacker.IsNPC() || attacker.IsPlayer() )
+				attackerEHandle = attacker.GetEncodedEHandle()
 		}
+		if ( attackerEHandle != -1 )
+		{
+			// when victim having a parent
+			// client code sometimes get their's parent's .GetPlayerName()
+			// and it will cause a crash if parent not a player entity!
+			if( victim.GetParent() != null )
+				victim.ClearParent()
+			MessageToAll( eEventNotifications.MarkedForDeathKill, null, victim, attackerEHandle )
+		}
+
 		svGlobal.levelEnt.Signal( "MarkKilled", { mark = victim, killer = attacker } )
-		
-		if ( attacker.IsPlayer() )
+
+		if ( IsValid( attacker ) && attacker.IsPlayer() )
 		{
 			if( GetMarked( attacker.GetTeam() ) != attacker ) // if marked killed marked, it's handle in the upper function
 				AddPlayerScore( attacker, "MarkedTargetKilled" )

@@ -24,7 +24,7 @@ const array<string> CONNECTING_NOTIFICATIONS =
     ANSI_COLOR_RED + "请尊重其他玩家，勿卖弱、嘲讽等" + ANSI_COLOR_END,
 ]
 
-global function Modded_Gamemode_Bleedout_Init
+global function GameModifier_Bleedout_Init
 
 global function Bleedout_HealthRegenThink
 global function Bleedout_SetHealthRegenRate
@@ -156,7 +156,7 @@ struct
 	table< entity, array<entity> > playerBeingKnockDownBy // handle knockdown score event
 } file
 
-void function Modded_Gamemode_Bleedout_Init()
+void function GameModifier_Bleedout_Init()
 {
 	//SetServerVar( "ammoLimit", true )
 	//SetServerVar( "playerBleedout", true )
@@ -223,7 +223,8 @@ void function Modded_Gamemode_Bleedout_Init()
 	AddDamageCallback( "player", OnPlayerDamaged )
 
     // more score added
-    AddCallback_GameStateEnter( eGameState.Playing, SetBleedoutModeScoreEvent )
+	// use prematch for game modifiers to setup score
+    AddCallback_GameStateEnter( eGameState.Prematch, SetBleedoutModeScoreEvent )
 
 	// grapple!!!
 	AddCallback_OnPlayerGrappled( BleedoutOnPlayerGrappled )
@@ -2292,7 +2293,7 @@ void function PlayerPressedGrappleDetachButton( entity player )
 	player.Signal( "GrappleCancelled" )
 }
 
-// health regen: pas_fast_regen won't take effect, all players have less regen rate
+// health regen: pas_fast_health_regen take less effect, all players have less regen rate
 void function Bleedout_HealthRegenThink( entity player )
 {
     player.EndSignal( "OnDestroy" )
@@ -2321,6 +2322,11 @@ void function Bleedout_HealthRegenThink( entity player )
 
 		if ( player.GetHealth() == player.GetMaxHealth() )
 			continue
+
+		// update health regen delay
+		healthRegenStartDelay = file.bleedoutHealthRegenDelay
+		if ( PlayerHasPassive( player, ePassives.PAS_FAST_HEALTH_REGEN ) )
+			healthRegenStartDelay *= 0.75 // nerfed fast regen
 
 		// No regen during phase shift
 		if ( player.IsPhaseShifted() )
